@@ -4,6 +4,8 @@ from datetime import datetime
 import torch
 import glob
 import re
+import pygit2
+import os
 
 class StateManager:
     def __init__(self, args, model, optimizer, device):
@@ -16,6 +18,12 @@ class StateManager:
 
             with open(os.path.join(self.weights_dir, 'setup'), 'w') as f:
                 print(vars(args), file=f)
+                try:
+                    repo_path = os.path.dirname(os.path.realpath(__file__))
+                except:
+                    repo_path = '.'
+                repo = pygit2.Repository(repo_path)
+                print("Commit: {}".format(repo.head.get_object().short_id), file=f)
         else:
             self.weights_dir = args.restore
             weights = glob.iglob(os.path.join(self.weights_dir, '*pth'))
