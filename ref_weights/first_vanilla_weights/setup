@@ -1,0 +1,1 @@
+{'batch_size': 4, 'epochs': 1000, 'lr': 3e-05, 'training_set': '../data-fast/suntemple/processed_good', 'reference_set': None, 'num_pairs': 1000, 'img_height': None, 'img_width': None, 'gpu': 0, 'restore': None}
