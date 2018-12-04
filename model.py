@@ -57,13 +57,12 @@ class DenoiserEncoder(nn.Module):
 
     def forward(self, inputs):
         cur = inputs
-        outputs = [inputs]
+        outputs = []
         for i, enc in enumerate(self.encoder_layers):
             cur = enc(cur)
+            outputs.append(cur)
             if i != len(self.encoder_layers) - 1:
                 cur = self.pool(cur)
-            if i != len(self.encoder_layers) - 2: # Pool 5 isn't used by decoder
-                outputs.append(cur)
 
         return outputs
 
@@ -100,7 +99,7 @@ class DenoiserModel(nn.Module):
                                        [num_input_channels, 48, 48, 48, 48, 48])
 
         self.decoder = DenoiserDecoder([[96, 96], [96, 96], [96, 96], [96, 96], [64, 32]],
-                                       [48+48, 96+48, 96+48, 96+48, 96+num_input_channels],
+                                       [48+48, 96+48, 96+48, 96+48, 96+48],
                                        num_output_channels)
 
         if init:
@@ -122,18 +121,19 @@ class DenoiserModel(nn.Module):
             return output
 
     def dynamic_filters(self, color, weights):
-        weights = weights.view(-1, kernel_size, kernel_size, weights.shape[-2], weights.shape[-1])
+        #weights = weights.clamp(0, 1) # Try clamping
         width, height = color.shape[-1], color.shape[-2]
         output = torch.zeros_like(color)
         padding = kernel_size // 2
         padded = F.pad(color, (padding, padding, padding, padding))
 
+        shifted = []
         for i in range(kernel_size):
             for j in range(kernel_size):
-                cur_weights = weights[:, i, j, ...].unsqueeze(dim=1)
-                offset_y = i - kernel_size // 2
-                offset_x = j - kernel_size // 2
-                output = output + padded[:, :, padding + offset_y:padding + offset_y + height, padding + offset_x:padding + offset_x + width] * cur_weights
+                shifted.append(padded[:, :, i:i + height, j:j + width])
 
-        return output
+        img_stack = torch.stack(shifted, dim=1)
+        output = torch.sum(weights.unsqueeze(dim=2) * img_stack, dim=1)
+
+        return output.squeeze(dim=1)
 
