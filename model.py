@@ -4,15 +4,18 @@ import torch.nn.functional as F
 from utils import tonemap
 
 num_input_channels = 9
-kernel_size = 5
+kernel_size = 3
 
 class Conv(nn.Module):
-    def __init__(self, in_channels, out_channels, relu=True, leaky=True):
+    def __init__(self, in_channels, out_channels, stride=1, relu=True, leaky=True, kernel_size=(3, 3), batchnorm=True):
         super(Conv, self).__init__()
+        padding = (1 if kernel_size[0] == 3 else 0, 1 if kernel_size[1] == 3 else 0)
         cur = [nn.Conv2d(in_channels=in_channels,
                          out_channels=out_channels,
-                         kernel_size=3,
-                         padding=1)]
+                         kernel_size=kernel_size,
+                         padding=padding,
+                         stride=stride)]
+
         if relu:
             if leaky:
                 cur.append(nn.LeakyReLU(negative_slope=0.1))
@@ -26,13 +29,65 @@ class Conv(nn.Module):
         else:
             self.init_nonlinearity = 'linear'
 
+        if batchnorm:
+            cur.append(nn.BatchNorm2d(out_channels))
+
         self.model = nn.Sequential(*cur)
 
     def forward(self, inputs):
-        return self.model(inputs)
+        out = self.model(inputs)
+        return out
 
     def initialize(self):
         nn.init.kaiming_normal_(self.model[0].weight.data, nonlinearity=self.init_nonlinearity)
+
+class JitNetBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1, upsample=1):
+        super(JitNetBlock, self).__init__()
+        self.main = nn.Sequential(Conv(in_channels=in_channels,
+                                       out_channels=out_channels,
+                                       stride=stride),
+                                  Conv(in_channels=out_channels,
+                                       out_channels=out_channels,
+                                       kernel_size=(1,3),
+                                       relu=False,
+                                       batchnorm=False),
+                                  Conv(in_channels=out_channels,
+                                       out_channels=out_channels,
+                                       kernel_size=(3,1),
+                                       relu=False,
+                                       batchnorm=False))
+
+        if in_channels != out_channels:
+            self.skip = Conv(in_channels=in_channels,
+                             out_channels=out_channels,
+                             kernel_size=(1,1),
+                             stride=stride,
+                             relu=False,
+                             batchnorm=False)
+        elif stride > 1:
+            self.skip = nn.MaxPool2d(kernel_size=stride, stride=stride)
+        else:
+            self.skip = None
+
+        self.post = nn.Sequential(nn.ReLU(),
+                                  nn.BatchNorm2d(out_channels))
+
+        if upsample > 1:
+            self.upsample = nn.Upsample(scale_factor=upsample, mode='nearest')
+        else:
+            self.upsample = None
+
+    def forward(self, input):
+        out = self.main(input)
+        if self.skip is not None:
+            out = out + self.skip(input)
+
+        out = self.post(out)
+        if self.upsample:
+            out = self.upsample(out)
+
+        return out
 
 def create_layers(sizes_num_layers, layer_input_sizes):
     layers = nn.ModuleList()
@@ -93,39 +148,136 @@ class DenoiserModel(nn.Module):
     def __init__(self, init, use_dfn=True):
         super(DenoiserModel, self).__init__()
         self.use_dfn = use_dfn
-        num_output_channels = kernel_size**2 if use_dfn else 3
+        #self.encoder = DenoiserEncoder([[48, 48], [48], [48], [48], [48], [48]],
+        #                               [num_input_channels, 48, 48, 48, 48, 48])
 
-        self.encoder = DenoiserEncoder([[48, 48], [48], [48], [48], [48], [48]],
-                                       [num_input_channels, 48, 48, 48, 48, 48])
+        #self.decoder = DenoiserDecoder([[96, 96], [96, 96], [96, 96], [96, 96], [64, 32]],
+        #                               [48+48, 96+48, 96+48, 96+48, 96+48],
+        #                               num_output_channels)
 
-        self.decoder = DenoiserDecoder([[96, 96], [96, 96], [96, 96], [96, 96], [64, 32]],
-                                       [48+48, 96+48, 96+48, 96+48, 96+48],
-                                       num_output_channels)
+        self.start = nn.Sequential(Conv(in_channels=num_input_channels,
+                                        out_channels=8,
+                                        stride=2,
+                                        relu=True,
+                                        leaky=False),
+                                   Conv(in_channels=8,
+                                        out_channels=32,
+                                        stride=2,
+                                        relu=True,
+                                        leaky=False))
+        
+        self.enc_block1 = JitNetBlock(in_channels=32,
+                                      out_channels=64,
+                                      stride=2)
+        self.enc_block2 = JitNetBlock(in_channels=64,
+                                      out_channels=64,
+                                      stride=2)
+
+        self.enc_block3 = JitNetBlock(in_channels=64,
+                                      out_channels=128,
+                                      stride=2)
+
+        self.dec_block3 = JitNetBlock(in_channels=128,
+                                      out_channels=128,
+                                      upsample=2)
+
+        self.dec_block2 = JitNetBlock(in_channels=128+64,
+                                      out_channels=64,
+                                      upsample=2)
+
+        self.dec_block1 = JitNetBlock(in_channels=64+64,
+                                      out_channels=32)
+
+        self.finish1 = Conv(in_channels=32,
+                            out_channels=29,
+                            leaky=False)
+
+        self.final = nn.Sequential(nn.Conv2d(in_channels=32, out_channels=32,
+                                             kernel_size=(1, 1)),
+                                   nn.ReLU(),
+                                   nn.Conv2d(in_channels=32, out_channels=32,
+                                             kernel_size=(3, 3),
+                                             groups=32,
+                                             padding=(1, 1)),
+                                   nn.Conv2d(in_channels=32,
+                                             out_channels=32,
+                                             kernel_size=(1, 1),
+                                             padding=0))
 
         if init:
             self.apply(init_weights)
 
-
     def forward(self, color, normal, albedo):
-        tonemapped = tonemap(color)
+        #dev = color.get_device()
+        #color_mean = torch.tensor([0.0077, 0.0016, 0.0004]).to(dev).view(1, 3, 1, 1)
+        #normal_mean = torch.tensor([-0.3121,  0.0279,  0.2068]).to(dev).view(1, 3, 1, 1)
+        #albedo_mean = torch.tensor([0.4488, 0.4342, 0.3982]).to(dev).view(1, 3, 1, 1)
+        #color_std = torch.tensor([0.0058, 0.0001, 0.0001]).to(dev).view(1, 3, 1, 1)
+        #normal_std = torch.tensor([ 98.9470,   0.9922, 102.0970]).to(dev).view(1, 3, 1, 1)
+        #albedo_std = torch.tensor([0.2741, 0.2895, 0.2872]).to(dev).view(1, 3, 1, 1)
 
-        full_input = torch.cat([tonemapped, normal, albedo], dim=1)
+        #mapped_color = (torch.log1p(color) - color_mean) / color_std
+        #mapped_normal = (normal - normal_mean) / normal_std
+        #mapped_albedo = (torch.log1p(albedo) - albedo_mean) / albedo_std
 
-        enc_outs = self.encoder(full_input)
+        #luminance = self.get_luminance(color)
+        #avg_luminance = luminance.view(color.shape[0], -1).mean(dim=1).view(color.shape[0], 1, 1, 1)
 
-        output = self.decoder(enc_outs)
+        mapped_color = torch.log1p(color)
+        mapped_normal = normal
+        mapped_albedo = torch.log1p(albedo)
+
+        full_input = torch.cat([mapped_color, mapped_normal, mapped_albedo], dim=1)
+
+        out = self.start(full_input)
+        enc1_out = self.enc_block1(out)
+        enc2_out = self.enc_block2(enc1_out)
+        enc3_out = self.enc_block3(enc2_out)
+
+        out = self.dec_block3(enc3_out)
+        out = self.dec_block2(torch.cat([enc2_out, out], dim=1))
+        quarter_out = self.dec_block1(torch.cat([enc1_out, out], dim=1))
+
+        half_out = F.interpolate(quarter_out, scale_factor=4, mode='nearest')
+        half_out = self.finish1(half_out)
+
+        out = F.interpolate(half_out, scale_factor=2, mode='nearest')
+
+        output = self.final(torch.cat([out, mapped_normal], dim=1))
 
         if self.use_dfn:
             return self.dynamic_filters(color, output)
         else:
             return output
 
+    def get_luminance(self, color):
+        return color[:, 0, ...] / 4 + color[:, 1, ...] / 2 + color[:, 2, ...] / 4
+
     def dynamic_filters(self, color, weights):
-        #weights = weights.clamp(0, 1) # Try clamping
         width, height = color.shape[-1], color.shape[-2]
-        output = torch.zeros_like(color)
+
+        separable_x_weights = F.softmax(weights[:, 9:20, ...], dim=1)
+        separable_y_weights = F.softmax(weights[:, 20:31, ...], dim=1)
+        separable_padding = 11 // 2
+        padded = F.pad(color, (0, 0, separable_padding, separable_padding))
+        shifted = []
+        for i in range(11):
+            shifted.append(padded[:, :, i:i+height, :])
+
+        img_stack = torch.stack(shifted, dim=1)
+        out_separable_x = torch.sum(separable_x_weights.unsqueeze(dim=2) * img_stack, dim=1).squeeze(dim=1)
+
+        padded = F.pad(out_separable_x, (separable_padding, separable_padding, 0, 0))
+        shifted = []
+        for i in range(11):
+            shifted.append(padded[:, :, :, i:i+width])
+
+        img_stack = torch.stack(shifted, dim=1)
+        separable_output = torch.sum(separable_y_weights.unsqueeze(dim=2) * img_stack, dim=1).squeeze(dim=1)
+
+        dense_weights = F.softmax(weights[:, 0:9, ...], dim=1)
         padding = kernel_size // 2
-        padded = F.pad(color, (padding, padding, padding, padding))
+        padded = F.pad(separable_output, (padding, padding, padding, padding))
 
         shifted = []
         for i in range(kernel_size):
@@ -133,7 +285,6 @@ class DenoiserModel(nn.Module):
                 shifted.append(padded[:, :, i:i + height, j:j + width])
 
         img_stack = torch.stack(shifted, dim=1)
-        output = torch.sum(weights.unsqueeze(dim=2) * img_stack, dim=1)
+        dense_output = torch.sum(dense_weights.unsqueeze(dim=2) * img_stack, dim=1).squeeze(dim=1)
 
-        return output.squeeze(dim=1)
-
+        return dense_output

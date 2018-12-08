@@ -3,6 +3,7 @@ from data_loading import load_exr, dump_raw
 from utils import tonemap
 import sys
 import os
+import torch
 from itertools import chain
 
 data_dir = sys.argv[1]
@@ -22,7 +23,7 @@ def get_crops(hdr, ref, normal, albedo):
             normal_crop = normal[:, y:y+cropsize, x:x+cropsize]
             albedo_crop = albedo[:, y:y+cropsize, x:x+cropsize]
 
-            mse = ((tonemap(hdr_crop) - tonemap(ref_crop))**2).mean()
+            mse = ((torch.log1p(hdr_crop) - torch.log1p(ref_crop))**2).mean()
             crops.append((mse, hdr_crop, ref_crop, normal_crop, albedo_crop))
 
     crops = sorted(crops, key=lambda x: x[0])[::-1][:10]

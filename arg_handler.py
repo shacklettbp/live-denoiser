@@ -7,6 +7,7 @@ def parse_train_args():
     parser.add_argument('--lr', type=float, default=0.0003)
     parser.add_argument('--training-set', type=str, required=True)
     parser.add_argument('--reference-set', type=str, default=None)
+    parser.add_argument('--validation-set', type=str, required=True)
     parser.add_argument('--num-pairs', type=int, default=None)
     parser.add_argument('--img-height', type=int, default=None)
     parser.add_argument('--img-width', type=int, default=None)

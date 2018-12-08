@@ -29,7 +29,13 @@ dataloader = DataLoader(dataset, batch_size=args.batch_size, num_workers=8,
                         shuffle=True,
                         pin_memory=True)
 
+
+val_dataset = PreProcessedDataset(dataset_path=args.validation_set)
+val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=8,
+                            shuffle=False, pin_memory=True)
+
 def train_epoch(model, optimizer, dataloader):
+    model.train()
     for color, ref, normal, albedo in iter_with_device(dataloader, args.gpu):
         color, ref, normal, albedo = color.to(dev), ref.to(dev), normal.to(dev), albedo.to(dev)
 
@@ -38,6 +44,19 @@ def train_epoch(model, optimizer, dataloader):
         loss = compute_loss(output, ref)
         loss.backward()
         optimizer.step()
+
+    model.eval()
+    total_val_loss = 0
+    num_val_batches = 0
+    for color, ref, normal, albedo in iter_with_device(dataloader, args.gpu):
+        color, ref, normal, albedo = color.to(dev), ref.to(dev), normal.to(dev), albedo.to(dev)
+        num_val_batches += 1
+        with torch.no_grad():
+            out = model(color, normal, albedo)
+            loss = compute_loss(out, ref)
+            total_val_loss += loss.cpu()
+    
+    print("Val loss: {}".format(total_val_loss / num_val_batches))
 
 def train(model, optimizer, dataloader, state_mgr, num_epochs):
     interrupted = False

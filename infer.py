@@ -9,9 +9,10 @@ from data_loading import pad_data, save_exr
 import os
 
 args = parse_infer_args()
-
-model = DenoiserModel(init=False).cuda()
+dev = torch.device('cuda:{}'.format(args.gpu))
+model = DenoiserModel(init=False).to(dev)
 model.load_state_dict(torch.load(args.weights, map_location='cpu'))
+model.eval()
 
 dataset = ExrDataset(training_path=args.inputs,
                      reference_path=args.inputs,
@@ -21,7 +22,7 @@ dataset = ExrDataset(training_path=args.inputs,
 
 for i in range(args.start_frame, len(dataset)):
     color, _, normal, albedo = dataset[i]
-    color, normal, albedo = color.cuda(), normal.cuda(), albedo.cuda()
+    color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
     color, normal, albedo = pad_data(color), pad_data(normal), pad_data(albedo)
     color, normal, albedo = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0)
 
