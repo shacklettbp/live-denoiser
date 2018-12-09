@@ -90,9 +90,9 @@ def init_weights(m):
     if isinstance(m, Conv):
         m.initialize()
 
-class DenoiserModel(nn.Module):
+class VanillaDenoiserModel(nn.Module):
     def __init__(self, init, use_dfn=True):
-        super(DenoiserModel, self).__init__()
+        super(VanillaDenoiserModel, self).__init__()
         use_dfn = False
         self.use_dfn = use_dfn
         num_output_channels = kernel_size**2 if use_dfn else 3

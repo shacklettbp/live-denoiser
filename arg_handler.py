@@ -26,5 +26,6 @@ def parse_infer_args():
     parser.add_argument('--img-width', type=int, default=None)
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--start-frame', type=int, default=0)
+    parser.add_argument('--vanilla-net', default=False, action='store_true')
 
     return parser.parse_args()

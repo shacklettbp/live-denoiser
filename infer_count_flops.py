@@ -4,6 +4,7 @@ from dataset import ExrDataset
 from state import StateManager
 from arg_handler import parse_infer_args
 from model import DenoiserModel
+from vanilla_model import VanillaDenoiserModel
 from utils import tonemap
 from data_loading import pad_data, save_exr
 import os
@@ -11,7 +12,10 @@ from flops_counter import add_flops_counting_methods, flops_to_string, get_model
 
 args = parse_infer_args()
 dev = torch.device('cuda:{}'.format(args.gpu))
-model = DenoiserModel(init=False).to(dev)
+if args.vanilla_net:
+    model = VanillaDenoiserModel(init=False).to(dev)
+else:
+    model = DenoiserModel(init=False).to(dev)
 model.load_state_dict(torch.load(args.weights, map_location='cpu'))
 model = add_flops_counting_methods(model)
 model.eval().start_flops_count()
@@ -30,7 +34,6 @@ color, normal, albedo = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.
 with torch.no_grad():
     out = model(color, normal, albedo)
 
-print(model)
 print('Output shape: {}'.format(list(out.shape)))
 print('Flops:  {}'.format(flops_to_string(model.compute_average_flops_cost())))
 print('Params: ' + get_model_parameters_number(model))
