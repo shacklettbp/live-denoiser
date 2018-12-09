@@ -1,0 +1,2 @@
+{'batch_size': 64, 'epochs': 1000, 'lr': 0.0003, 'training_set': '../data-fast/suntemple/processed_good', 'reference_set': None, 'validation_set': '../data-fast/suntemple/validation', 'num_pairs': 1000, 'img_height': None, 'img_width': None, 'gpu': 0, 'restore': None}
+Commit: 153cbb2
