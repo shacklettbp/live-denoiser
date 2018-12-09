@@ -145,7 +145,7 @@ def init_weights(m):
         m.initialize()
 
 class DenoiserModel(nn.Module):
-    def __init__(self, init, use_dfn=True):
+    def __init__(self, init, use_dfn=False):
         super(DenoiserModel, self).__init__()
         self.use_dfn = use_dfn
         #self.encoder = DenoiserEncoder([[48, 48], [48], [48], [48], [48], [48]],
@@ -155,42 +155,51 @@ class DenoiserModel(nn.Module):
         #                               [48+48, 96+48, 96+48, 96+48, 96+48],
         #                               num_output_channels)
 
-        self.start = nn.Sequential(Conv(in_channels=num_input_channels,
-                                        out_channels=8,
-                                        stride=2,
-                                        relu=True,
-                                        leaky=False),
-                                   Conv(in_channels=8,
-                                        out_channels=32,
-                                        stride=2,
-                                        relu=True,
-                                        leaky=False))
-        
-        self.enc_block1 = JitNetBlock(in_channels=32,
+        self.mixstart = nn.Sequential(nn.Conv2d(in_channels=num_input_channels,
+                                                out_channels=8,
+                                                stride=1,
+                                                kernel_size=(1, 1)),
+                                      nn.ReLU(),
+                                      nn.BatchNorm2d(8))
+
+        self.enc_block1 = JitNetBlock(in_channels=8,
+                                      out_channels=8,
+                                      stride=2)
+
+        self.enc_block2 = JitNetBlock(in_channels=8,
+                                      out_channels=32,
+                                      stride=2)
+
+        self.enc_block3 = JitNetBlock(in_channels=32,
                                       out_channels=64,
                                       stride=2)
-        self.enc_block2 = JitNetBlock(in_channels=64,
+        self.enc_block4 = JitNetBlock(in_channels=64,
                                       out_channels=64,
                                       stride=2)
 
-        self.enc_block3 = JitNetBlock(in_channels=64,
+        self.enc_block5 = JitNetBlock(in_channels=64,
                                       out_channels=128,
                                       stride=2)
 
-        self.dec_block3 = JitNetBlock(in_channels=128,
+        self.dec_block5 = JitNetBlock(in_channels=128,
                                       out_channels=128,
                                       upsample=2)
 
-        self.dec_block2 = JitNetBlock(in_channels=128+64,
+        self.dec_block4 = JitNetBlock(in_channels=128,
                                       out_channels=64,
                                       upsample=2)
 
-        self.dec_block1 = JitNetBlock(in_channels=64+64,
-                                      out_channels=32)
+        self.dec_block3 = JitNetBlock(in_channels=64,
+                                      out_channels=64,
+                                      upsample=2)
 
-        self.finish1 = Conv(in_channels=32,
-                            out_channels=29,
-                            leaky=False)
+        self.dec_block2 = JitNetBlock(in_channels=64,
+                                      out_channels=32,
+                                      upsample=2)
+
+        self.dec_block1 = JitNetBlock(in_channels=32,
+                                      out_channels=32,
+                                      upsample=2)
 
         self.final = nn.Sequential(nn.Conv2d(in_channels=32, out_channels=32,
                                              kernel_size=(1, 1)),
@@ -200,7 +209,7 @@ class DenoiserModel(nn.Module):
                                              groups=32,
                                              padding=(1, 1)),
                                    nn.Conv2d(in_channels=32,
-                                             out_channels=32,
+                                             out_channels=3,
                                              kernel_size=(1, 1),
                                              padding=0))
 
@@ -229,25 +238,29 @@ class DenoiserModel(nn.Module):
 
         full_input = torch.cat([mapped_color, mapped_normal, mapped_albedo], dim=1)
 
-        out = self.start(full_input)
-        enc1_out = self.enc_block1(out)
+        mixed = self.mixstart(full_input)
+        enc1_out = self.enc_block1(mixed)
         enc2_out = self.enc_block2(enc1_out)
         enc3_out = self.enc_block3(enc2_out)
+        enc4_out = self.enc_block4(enc3_out)
+        enc5_out = self.enc_block5(enc4_out)
+        out = self.dec_block5(enc5_out)
+        out = torch.cat([out[:, 0:64, ...] + enc4_out, out[:, 64:, ...]], dim=1)
+        out = self.dec_block4(out)
+        out = out + enc3_out
+        out = self.dec_block3(out)
+        out = torch.cat([out[:, 0:32, ...] + enc2_out, out[:, 32:, ...]], dim=1)
+        out = self.dec_block2(out)
+        out = torch.cat([out[:, 0:8, ...] + enc1_out, out[:, 8:, ...]], dim=1)
+        out = self.dec_block1(out)
 
-        out = self.dec_block3(enc3_out)
-        out = self.dec_block2(torch.cat([enc2_out, out], dim=1))
-        quarter_out = self.dec_block1(torch.cat([enc1_out, out], dim=1))
-
-        half_out = F.interpolate(quarter_out, scale_factor=4, mode='nearest')
-        half_out = self.finish1(half_out)
-
-        out = F.interpolate(half_out, scale_factor=2, mode='nearest')
-
-        output = self.final(torch.cat([out, mapped_normal], dim=1))
+        out = torch.cat([out[:, 0:8, ...] + mixed, out[:, 8:, ...]], dim=1)
+        output = self.final(out)
 
         if self.use_dfn:
             return self.dynamic_filters(color, output)
         else:
+            output = output * 0.0001
             return output
 
     def get_luminance(self, color):
