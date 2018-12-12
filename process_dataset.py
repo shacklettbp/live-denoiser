@@ -19,6 +19,8 @@ dst_dir = args.dst
 files = get_files(data_dir, 'exr', int(args.num_imgs))
 if args.ref is not None:
     ref_files = get_files(data_dir, 'exr', int(args.num_imgs))
+else:
+    ref_files = None
 cropsize = 256
 
 def get_crops(hdr, normal, albedo, ref):

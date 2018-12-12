@@ -6,6 +6,7 @@ import sys
 from torch.utils.data import DataLoader
 from arg_handler import parse_train_args
 from model import DenoiserModel
+from vanilla_model import VanillaDenoiserModel
 from dataset import NumpyRawDataset, PreProcessedDataset
 from state import StateManager
 from loss import compute_loss
@@ -15,7 +16,10 @@ from cyclic import CyclicLR
 args = parse_train_args()
 
 dev = torch.device("cuda:{}".format(args.gpu))
-model = DenoiserModel(init=args.restore is None).to(dev)
+if args.vanilla_net:
+    model = VanillaDenoiserModel(init=args.restore is None).to(dev)
+else:
+    model = DenoiserModel(init=args.restore is None).to(dev)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))
 state_mgr = StateManager(args, model, optimizer, dev)
 

@@ -4,13 +4,18 @@ from dataset import ExrDataset
 from state import StateManager
 from arg_handler import parse_infer_args
 from model import DenoiserModel
+from vanilla_model import VanillaDenoiserModel
 from utils import tonemap
 from data_loading import pad_data, save_exr
 import os
 
 args = parse_infer_args()
 dev = torch.device('cuda:{}'.format(args.gpu))
-model = DenoiserModel(init=False).to(dev)
+if args.vanilla_net:
+    model = VanillaDenoiserModel(init=False).to(dev)
+else:
+    model = DenoiserModel(init=False).to(dev)
+
 model.load_state_dict(torch.load(args.weights, map_location='cpu'))
 model.eval()
 
@@ -35,5 +40,6 @@ for i in range(args.start_frame, len(dataset)):
 
     tonemapped = tonemap(output)
     pil_txfm = torchvision.transforms.ToPILImage()
+    tonemapped = tonemapped.clamp(0.0, 1.0)
     img = pil_txfm(tonemapped)
     img.save(os.path.join(args.outputs, 'out_{}.png'.format(i)))

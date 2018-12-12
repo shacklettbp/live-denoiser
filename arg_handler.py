@@ -13,6 +13,7 @@ def parse_train_args():
     parser.add_argument('--img-width', type=int, default=None)
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--restore', type=str, default=None)
+    parser.add_argument('--vanilla-net', default=False, action='store_true')
 
     return parser.parse_args()
 

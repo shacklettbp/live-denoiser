@@ -4,7 +4,6 @@ import torch.nn.functional as F
 from utils import tonemap
 
 num_input_channels = 9
-kernel_size = 5
 
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels, relu=True, leaky=True):
@@ -91,11 +90,9 @@ def init_weights(m):
         m.initialize()
 
 class VanillaDenoiserModel(nn.Module):
-    def __init__(self, init, use_dfn=True):
+    def __init__(self, init):
         super(VanillaDenoiserModel, self).__init__()
-        use_dfn = False
-        self.use_dfn = use_dfn
-        num_output_channels = kernel_size**2 if use_dfn else 3
+        num_output_channels = 3
 
         self.encoder = DenoiserEncoder([[48, 48], [48], [48], [48], [48], [48]],
                                        [num_input_channels, 48, 48, 48, 48, 48])
@@ -109,7 +106,7 @@ class VanillaDenoiserModel(nn.Module):
 
 
     def forward(self, color, normal, albedo):
-        tonemapped = tonemap(color)
+        tonemapped = tonemap(color, exposure_key=4)
 
         full_input = torch.cat([tonemapped, normal, albedo], dim=1)
 
@@ -117,24 +114,4 @@ class VanillaDenoiserModel(nn.Module):
 
         output = self.decoder(enc_outs)
 
-        if self.use_dfn:
-            return self.dynamic_filters(color, output)
-        else:
-            return output
-
-    def dynamic_filters(self, color, weights):
-        weights = weights.view(-1, kernel_size, kernel_size, weights.shape[-2], weights.shape[-1])
-        width, height = color.shape[-1], color.shape[-2]
-        output = torch.zeros_like(color)
-        padding = kernel_size // 2
-        padded = F.pad(color, (padding, padding, padding, padding))
-
-        for i in range(kernel_size):
-            for j in range(kernel_size):
-                cur_weights = weights[:, i, j, ...].unsqueeze(dim=1)
-                offset_y = i - kernel_size // 2
-                offset_x = j - kernel_size // 2
-                output = output + padded[:, :, padding + offset_y:padding + offset_y + height, padding + offset_x:padding + offset_x + width] * cur_weights
-
         return output
-

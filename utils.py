@@ -12,10 +12,10 @@ def calc_luminance(color):
 
     return r / 4 + g/2 + b/4
 
-def tonemap(color):
+def tonemap(color, exposure_key=16):
     y = calc_luminance(color)
 
-    y_exposed = 4*y
+    y_exposed = exposure_key*y
 
     y_tm = y_exposed/(1 + y_exposed)
     y_denom = y
