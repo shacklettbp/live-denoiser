@@ -5,14 +5,12 @@ from utils import tonemap
 
 num_input_channels = 9
 kernel_size = 3
-
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, relu=True, leaky=True, kernel_size=(3, 3), batchnorm=True):
         super(Conv, self).__init__()
         padding = (1 if kernel_size[0] == 3 else 0, 1 if kernel_size[1] == 3 else 0)
         cur = [nn.Conv2d(in_channels=in_channels,
-                         out_channels=out_channels,
-                         kernel_size=kernel_size,
+                         out_channels=out_channels, kernel_size=kernel_size,
                          padding=padding,
                          stride=stride)]
 
@@ -48,8 +46,7 @@ class JitNetBlock(nn.Module):
                                        out_channels=out_channels,
                                        stride=stride),
                                   Conv(in_channels=out_channels,
-                                       out_channels=out_channels,
-                                       kernel_size=(1,3),
+                                       out_channels=out_channels, kernel_size=(1,3),
                                        relu=False,
                                        batchnorm=False),
                                   Conv(in_channels=out_channels,
@@ -145,9 +142,10 @@ def init_weights(m):
         m.initialize()
 
 class DenoiserModel(nn.Module):
-    def __init__(self, init, use_dfn=False):
+    def __init__(self, init):
         super(DenoiserModel, self).__init__()
-        self.use_dfn = use_dfn
+        #self.filter_func = self.direct_prediction
+        self.filter_func = self.mitchell_netravali
         #self.encoder = DenoiserEncoder([[48, 48], [48], [48], [48], [48], [48]],
         #                               [num_input_channels, 48, 48, 48, 48, 48])
 
@@ -209,7 +207,7 @@ class DenoiserModel(nn.Module):
                                              groups=32,
                                              padding=(1, 1)),
                                    nn.Conv2d(in_channels=32,
-                                             out_channels=3,
+                                             out_channels=2,
                                              kernel_size=(1, 1),
                                              padding=0))
 
@@ -257,14 +255,61 @@ class DenoiserModel(nn.Module):
         out = torch.cat([out[:, 0:8, ...] + mixed, out[:, 8:, ...]], dim=1)
         output = self.final(out)
 
-        if self.use_dfn:
-            return self.dynamic_filters(color, output)
-        else:
-            output = output * 0.0001
-            return output
+        return self.filter_func(color, output)
 
     def get_luminance(self, color):
         return color[:, 0, ...] / 4 + color[:, 1, ...] / 2 + color[:, 2, ...] / 4
+
+    def direct_prediction(self, color, output):
+        return output * 0.0001
+
+    def mitchell_netravali(self, color, params):
+        width, height = color.shape[-1], color.shape[-2]
+
+        kern_size = 11
+        radius = kern_size // 2
+
+        padded = F.pad(color, (0, 0, radius, radius))
+        filtered = torch.zeros_like(color)
+
+        weights = color.new(color.shape[0], kern_size, height, width).zero_()
+        inv_rad = 1 / radius
+
+        B = params[:, 0, ...]
+        C = params[:, 1, ...]
+
+        mid_idx = radius
+
+        # Make weights
+        for i in range(1, radius + 1):
+            x = 2*i*inv_rad
+            if x > 1:
+                tmp = ((-B - 6*C) * x*x*x + (6*B + 30*C) * x*x +
+                       (-12*B - 48*C) * x + (8*B + 24*C)) * (1/6)
+            else:
+                tmp = ((12 - 9*B - 6*C) * x*x*x +
+                       (-18 + 12*B + 6*C) * x*x +
+                       (6 - 2*B)) * (1/6)
+
+            weights[:, mid_idx + i, ...] = tmp
+            weights[:, mid_idx - i, ...] = tmp
+
+        shifted = []
+        for i in range(kern_size):
+            shifted.append(padded[:, :, i:i+height, :])
+
+        img_stack = torch.stack(shifted, dim=1)
+        out_y = torch.sum(weights.unsqueeze(dim=2) * img_stack, dim=1).squeeze(dim=1)
+        out_y = F.pad(out_y, (radius, radius, 0, 0))
+
+        shifted = []
+        for i in range(kern_size):
+            shifted.append(out_y[:, :, :, i:i+width])
+
+        img_stack = torch.stack(shifted, dim=1)
+        out = torch.sum(weights.unsqueeze(dim=2) * img_stack, dim=1).squeeze(dim=1)
+
+        return out
 
     def dynamic_filters(self, color, weights):
         width, height = color.shape[-1], color.shape[-2]
