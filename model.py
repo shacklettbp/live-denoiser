@@ -145,6 +145,7 @@ class DenoiserModel(nn.Module):
     def __init__(self, init):
         super(DenoiserModel, self).__init__()
         #self.filter_func = self.direct_prediction
+        self.kernel_size = 21
         self.filter_func = self.mitchell_netravali
         #self.encoder = DenoiserEncoder([[48, 48], [48], [48], [48], [48], [48]],
         #                               [num_input_channels, 48, 48, 48, 48, 48])
@@ -207,7 +208,7 @@ class DenoiserModel(nn.Module):
                                              groups=32,
                                              padding=(1, 1)),
                                    nn.Conv2d(in_channels=32,
-                                             out_channels=2,
+                                             out_channels=9,
                                              kernel_size=(1, 1),
                                              padding=0))
 
@@ -263,25 +264,23 @@ class DenoiserModel(nn.Module):
     def direct_prediction(self, color, output):
         return output * 0.0001
 
-    def mitchell_netravali(self, color, params):
-        width, height = color.shape[-1], color.shape[-2]
+    def make_mn_weights(self, params):
+        width, height = params.shape[-1], params.shape[-2]
+        kern_size = 21
 
-        kern_size = 11
-        radius = kern_size // 2
+        radius = self.kernel_size // 2
 
-        padded = F.pad(color, (0, 0, radius, radius))
-        filtered = torch.zeros_like(color)
-
-        weights = color.new(color.shape[0], kern_size, height, width).zero_()
+        weights = params.new(params.shape[0], self.kernel_size, height, width).zero_()
         inv_rad = 1 / radius
 
-        B = params[:, 0, ...]
         C = params[:, 1, ...]
+        B = params[:, 0, ...]
+        #B = 1 - 2*C
 
         mid_idx = radius
 
         # Make weights
-        for i in range(1, radius + 1):
+        for i in range(0, radius + 1):
             x = 2*i*inv_rad
             if x > 1:
                 tmp = ((-B - 6*C) * x*x*x + (6*B + 30*C) * x*x +
@@ -294,8 +293,22 @@ class DenoiserModel(nn.Module):
             weights[:, mid_idx + i, ...] = tmp
             weights[:, mid_idx - i, ...] = tmp
 
+        return weights
+
+    def mitchell_netravali(self, color, params):
+        width, height = color.shape[-1], color.shape[-2]
+
+        radius = self.kernel_size // 2
+
+        padded = F.pad(color, (0, 0, radius, radius))
+        filtered = torch.zeros_like(color)
+
+        combo_weights = F.softmax(params[:, 0:3, ...], dim=1)
+
+        weights = combo_weights[:, 0:1, ...] * self.make_mn_weights(params[:, 3:5, ...]) + combo_weights[:, 1:2, ...] * self.make_mn_weights(params[:, 5:7, ...]) + combo_weights[:, 2:3, ...] * self.make_mn_weights(params[:, 7:9, ...])
+
         shifted = []
-        for i in range(kern_size):
+        for i in range(self.kernel_size):
             shifted.append(padded[:, :, i:i+height, :])
 
         img_stack = torch.stack(shifted, dim=1)
@@ -303,7 +316,7 @@ class DenoiserModel(nn.Module):
         out_y = F.pad(out_y, (radius, radius, 0, 0))
 
         shifted = []
-        for i in range(kern_size):
+        for i in range(self.kernel_size):
             shifted.append(out_y[:, :, :, i:i+width])
 
         img_stack = torch.stack(shifted, dim=1)
