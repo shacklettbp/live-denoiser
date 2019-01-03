@@ -144,9 +144,10 @@ def init_weights(m):
 class DenoiserModel(nn.Module):
     def __init__(self, init):
         super(DenoiserModel, self).__init__()
-        #self.filter_func = self.direct_prediction
-        self.kernel_size = 21
-        self.filter_func = self.mitchell_netravali
+        self.filter_func = self.direct_prediction
+        #self.kernel_size = 21
+        #self.filter_func = self.mitchell_netravali
+
         #self.encoder = DenoiserEncoder([[48, 48], [48], [48], [48], [48], [48]],
         #                               [num_input_channels, 48, 48, 48, 48, 48])
 
