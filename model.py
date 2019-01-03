@@ -266,7 +266,7 @@ class DenoiserModel(nn.Module):
 
     def make_mn_weights(self, params):
         width, height = params.shape[-1], params.shape[-2]
-        kern_size = 21
+        kern_size = 101
 
         radius = self.kernel_size // 2
 
