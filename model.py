@@ -209,7 +209,7 @@ class DenoiserModel(nn.Module):
                                              groups=32,
                                              padding=(1, 1)),
                                    nn.Conv2d(in_channels=32,
-                                             out_channels=9,
+                                             out_channels=3,
                                              kernel_size=(1, 1),
                                              padding=0))
 
