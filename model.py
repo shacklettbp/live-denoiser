@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from utils import tonemap
 
-num_input_channels = 9
+num_input_channels = 15
 kernel_size = 3
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, relu=True, leaky=True, kernel_size=(3, 3), batchnorm=True):
@@ -216,27 +216,15 @@ class DenoiserModel(nn.Module):
         if init:
             self.apply(init_weights)
 
-    def forward(self, color, normal, albedo):
-        #dev = color.get_device()
-        #color_mean = torch.tensor([0.0077, 0.0016, 0.0004]).to(dev).view(1, 3, 1, 1)
-        #normal_mean = torch.tensor([-0.3121,  0.0279,  0.2068]).to(dev).view(1, 3, 1, 1)
-        #albedo_mean = torch.tensor([0.4488, 0.4342, 0.3982]).to(dev).view(1, 3, 1, 1)
-        #color_std = torch.tensor([0.0058, 0.0001, 0.0001]).to(dev).view(1, 3, 1, 1)
-        #normal_std = torch.tensor([ 98.9470,   0.9922, 102.0970]).to(dev).view(1, 3, 1, 1)
-        #albedo_std = torch.tensor([0.2741, 0.2895, 0.2872]).to(dev).view(1, 3, 1, 1)
-
-        #mapped_color = (torch.log1p(color) - color_mean) / color_std
-        #mapped_normal = (normal - normal_mean) / normal_std
-        #mapped_albedo = (torch.log1p(albedo) - albedo_mean) / albedo_std
-
-        #luminance = self.get_luminance(color)
-        #avg_luminance = luminance.view(color.shape[0], -1).mean(dim=1).view(color.shape[0], 1, 1, 1)
+    def forward(self, color, normal, albedo, color_prev1, color_prev2):
 
         mapped_color = torch.log1p(color)
         mapped_normal = normal
         mapped_albedo = torch.log1p(albedo)
+        mapped_color_prev1 = torch.log1p(color_prev1)
+        mapped_color_prev2 = torch.log1p(color_prev2)
 
-        full_input = torch.cat([mapped_color, mapped_normal, mapped_albedo], dim=1)
+        full_input = torch.cat([mapped_color, mapped_normal, mapped_albedo, mapped_color_prev1, mapped_color_prev2], dim=1)
 
         mixed = self.mixstart(full_input)
         enc1_out = self.enc_block1(mixed)
@@ -360,3 +348,33 @@ class DenoiserModel(nn.Module):
         dense_output = torch.sum(dense_weights.unsqueeze(dim=2) * img_stack, dim=1).squeeze(dim=1)
 
         return dense_output
+
+class TemporalDenoiserModel(nn.Module):
+    def __init__(self, recurrent, *args, **kwargs):
+        super(TemporalDenoiserModel, self).__init__()
+        self.recurrent = recurrent
+        self.model = DenoiserModel(*args, **kwargs)
+
+    def forward(self, color, normal, albedo, color_prev1=None, color_prev2=None):
+        color = color.transpose(0, 1)
+        normal = normal.transpose(0, 1)
+        albedo = albedo.transpose(0, 1)
+
+        if color_prev1 is None:
+            color_prev1 = torch.zeros_like(color[0])
+        if color_prev2 is None:
+            color_prev2 = torch.zeros_like(color[0])
+
+        all_outputs = []
+        for i in range(color.shape[0]):
+            output = self.model(color[i], normal[i], albedo[i], color_prev1, color_prev2)
+            color_prev2 = color_prev1
+
+            if self.recurrent:
+                color_prev1 = output
+            else:
+                color_prev1 = color[i]
+
+            all_outputs.append(output)
+
+        return torch.stack(all_outputs, dim=1)

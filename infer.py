@@ -3,7 +3,7 @@ import torchvision
 from dataset import ExrDataset
 from state import StateManager
 from arg_handler import parse_infer_args
-from model import DenoiserModel
+from model import TemporalDenoiserModel
 from vanilla_model import VanillaDenoiserModel
 from utils import tonemap
 from data_loading import pad_data, save_exr
@@ -14,7 +14,7 @@ dev = torch.device('cuda:{}'.format(args.gpu))
 if args.vanilla_net:
     model = VanillaDenoiserModel(init=False).to(dev)
 else:
-    model = DenoiserModel(init=False).to(dev)
+    model = TemporalDenoiserModel(recurrent=args.recurrent, init=False).to(dev)
 
 model.load_state_dict(torch.load(args.weights, map_location='cpu'))
 model.eval()
@@ -31,10 +31,21 @@ for i in range(args.start_frame, len(dataset)):
     color, normal, albedo = pad_data(color), pad_data(normal), pad_data(albedo)
     color, normal, albedo = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0)
 
+    color_prev1 = torch.zeros_like(color)
+    color_prev2 = torch.zeros_like(color)
+
     with torch.no_grad():
-        output = model(color, normal, albedo)
+        output = model(color.unsqueeze(dim=1), normal.unsqueeze(dim=1), albedo.unsqueeze(dim=1),
+                       color_prev1=color_prev1, color_prev2=color_prev2)
+
         output = output[..., 0:args.img_height, 0:args.img_width].cpu()
         output = output.squeeze()
+        if args.recurrent:
+            color_prev1 = output
+        else:
+            color_prev1 = color
+
+        color_prev2 = color_prev1
 
     save_exr(output, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
 

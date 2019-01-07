@@ -118,14 +118,18 @@ class PreProcessedDataset(DenoiserDataset):
         files = []
         dir = os.path.expanduser(dir)
         if num_imgs is None:
-            num_imgs = len(glob(os.path.join(dir, 'hdr_*_0.dmp')))
-        num_crops = len(glob(os.path.join(dir, 'hdr_0_*.dmp')))
+            num_imgs = len(glob(os.path.join(dir, 'hdr_*_0_0.dmp')))
+        num_crops = len(glob(os.path.join(dir, 'hdr_0_*_0.dmp')))
+        num_temporal = len(glob(os.path.join(dir, 'hdr_0_0_*.dmp')))
         for i in range(num_imgs):
             for crop in range(num_crops):
-                files.append((os.path.join(dir, "hdr_{}_{}.dmp".format(i, crop)),
-                              os.path.join(dir, "normal_{}_{}.dmp".format(i, crop)),
-                              os.path.join(dir, "albedo_{}_{}.dmp".format(i, crop)),
-                              os.path.join(dir, "ref_{}_{}.dmp".format(i, crop))))
+                temporal = []
+                for temporal_idx in range(num_temporal):
+                    temporal.append((os.path.join(dir, "hdr_{}_{}_{}.dmp".format(i, crop, temporal_idx)),
+                              os.path.join(dir, "normal_{}_{}_{}.dmp".format(i, crop, temporal_idx)),
+                              os.path.join(dir, "albedo_{}_{}_{}.dmp".format(i, crop, temporal_idx)),
+                              os.path.join(dir, "ref_{}_{}_{}.dmp".format(i, crop, temporal_idx))))
+                files.append(temporal)
 
         return files
 
@@ -139,10 +143,14 @@ class PreProcessedDataset(DenoiserDataset):
         _, height, width = self.fullshape
 
         filenames = self.training_files[idx]
+        color = [load_raw(f[0], self.fullshape) for f in filenames]
+        normal = [load_raw(f[1], self.fullshape) for f in filenames]
+        albedo = [load_raw(f[2], self.fullshape) for f in filenames]
+        reference = [load_raw(f[3], self.fullshape) for f in filenames]
 
-        color_tensor = load_raw(filenames[0], self.fullshape)
-        normal_tensor = load_raw(filenames[1], self.fullshape)
-        albedo_tensor = load_raw(filenames[2], self.fullshape)
-        reference_tensor = load_raw(filenames[3], self.fullshape)
+        color_tensor = torch.stack(color)
+        normal_tensor = torch.stack(normal)
+        albedo_tensor = torch.stack(albedo)
+        reference_tensor = torch.stack(reference)
 
         return self.augment(color_tensor, normal_tensor, albedo_tensor, reference_tensor)

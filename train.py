@@ -5,7 +5,7 @@ import signal
 import sys
 from torch.utils.data import DataLoader
 from arg_handler import parse_train_args
-from model import DenoiserModel
+from model import DenoiserModel, TemporalDenoiserModel
 from vanilla_model import VanillaDenoiserModel
 from dataset import NumpyRawDataset, PreProcessedDataset
 from state import StateManager
@@ -19,7 +19,7 @@ dev = torch.device("cuda:{}".format(args.gpu))
 if args.vanilla_net:
     model = VanillaDenoiserModel(init=args.restore is None).to(dev)
 else:
-    model = DenoiserModel(init=args.restore is None).to(dev)
+    model = TemporalDenoiserModel(recurrent=args.recurrent, init=args.restore is None).to(dev)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))
 state_mgr = StateManager(args, model, optimizer, dev)
 
@@ -48,9 +48,12 @@ def train_epoch(model, optimizer, scheduler, dataloader):
         color, normal, albedo, ref = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev)
 
         optimizer.zero_grad()
-        output = model(color, normal, albedo)
-        loss = compute_loss(output, ref)
+        outputs = model(color, normal, albedo)
+        loss = compute_loss(outputs, ref)
         loss.backward()
+
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1e-3)
+
         optimizer.step()
 
     model.eval()
