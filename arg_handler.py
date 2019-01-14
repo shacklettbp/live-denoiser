@@ -5,7 +5,7 @@ def common_args(parser):
     parser.add_argument('--img-width', type=int, default=None)
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--vanilla-net', default=False, action='store_true')
-    parser.add_argument('--recurrent', type=bool, default=True)
+    parser.add_argument('--disable-recurrence', action='store_true', default=False)
 
 def parse_train_args():
     parser = argparse.ArgumentParser()

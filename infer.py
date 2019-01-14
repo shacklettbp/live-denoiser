@@ -14,7 +14,7 @@ dev = torch.device('cuda:{}'.format(args.gpu))
 if args.vanilla_net:
     model = VanillaDenoiserModel(init=False).to(dev)
 else:
-    model = TemporalDenoiserModel(recurrent=args.recurrent, init=False).to(dev)
+    model = TemporalDenoiserModel(recurrent=not args.disable_recurrence, init=False).to(dev)
 
 model.load_state_dict(torch.load(args.weights, map_location='cpu'))
 model.eval()
@@ -40,10 +40,11 @@ for i in range(args.start_frame, len(dataset)):
 
         output = output[..., 0:args.img_height, 0:args.img_width].cpu()
         output = output.squeeze()
-        if args.recurrent:
-            color_prev1 = output
-        else:
+
+        if args.disable_recurrence:
             color_prev1 = color
+        else:
+            color_prev1 = output
 
         color_prev2 = color_prev1
 

@@ -70,10 +70,7 @@ class JitNetBlock(nn.Module):
         self.post = nn.Sequential(nn.ReLU(),
                                   nn.BatchNorm2d(out_channels))
 
-        if upsample > 1:
-            self.upsample = nn.Upsample(scale_factor=upsample, mode='nearest')
-        else:
-            self.upsample = None
+        self.upsample = upsample
 
     def forward(self, input):
         out = self.main(input)
@@ -81,8 +78,8 @@ class JitNetBlock(nn.Module):
             out = out + self.skip(input)
 
         out = self.post(out)
-        if self.upsample:
-            out = self.upsample(out)
+        if self.upsample > 1:
+            out = F.interpolate(out, scale_factor=self.upsample, mode='nearest')
 
         return out
 
@@ -141,6 +138,17 @@ def init_weights(m):
     if isinstance(m, Conv):
         m.initialize()
 
+def compute_luminance(color):
+    return color[:, 0, ...] * 0.299 + color[:, 1, ...] * 0.587 + color[:, 2, ...]  * 0.114
+
+def compute_exposure(img):
+    log_mean = torch.log1p(compute_luminance(img)).view(img.shape[0], -1).mean(dim=1)
+    avg_luminance = torch.expm1(log_mean).view(img.shape[0], 1, 1, 1)
+
+    key = 1.03 - 2/(torch.log1p(avg_luminance) + 2)
+    #key = 0.00001
+    return key / (avg_luminance + 1e-5)
+
 class DenoiserModel(nn.Module):
     def __init__(self, init):
         super(DenoiserModel, self).__init__()
@@ -156,17 +164,27 @@ class DenoiserModel(nn.Module):
         #                               num_output_channels)
 
         self.mixstart = nn.Sequential(nn.Conv2d(in_channels=num_input_channels,
-                                                out_channels=8,
+                                                out_channels=16,
                                                 stride=1,
                                                 kernel_size=(1, 1)),
                                       nn.ReLU(),
-                                      nn.BatchNorm2d(8))
+                                      nn.BatchNorm2d(16),
+                                      nn.Conv2d(in_channels=16,
+                                                out_channels=16,
+                                                groups=16,
+                                                kernel_size=(3, 3),
+                                                padding=(1, 1)),
+                                      nn.Conv2d(in_channels=16,
+                                                out_channels=16,
+                                                kernel_size=(1, 1)),
+                                      nn.ReLU(),
+                                      nn.BatchNorm2d(16))
 
-        self.enc_block1 = JitNetBlock(in_channels=8,
-                                      out_channels=8,
+        self.enc_block1 = JitNetBlock(in_channels=16,
+                                      out_channels=16,
                                       stride=2)
 
-        self.enc_block2 = JitNetBlock(in_channels=8,
+        self.enc_block2 = JitNetBlock(in_channels=16,
                                       out_channels=32,
                                       stride=2)
 
@@ -217,12 +235,18 @@ class DenoiserModel(nn.Module):
             self.apply(init_weights)
 
     def forward(self, color, normal, albedo, color_prev1, color_prev2):
-
         mapped_color = torch.log1p(color)
         mapped_normal = normal
         mapped_albedo = torch.log1p(albedo)
+
         mapped_color_prev1 = torch.log1p(color_prev1)
         mapped_color_prev2 = torch.log1p(color_prev2)
+
+        assert(not torch.isnan(mapped_color).any() and not (mapped_color == float('inf')).any())
+        assert(not torch.isnan(mapped_normal).any() and not (mapped_normal == float('inf')).any())
+        assert(not torch.isnan(mapped_albedo).any() and not (mapped_albedo == float('inf')).any())
+        #assert(not torch.isnan(mapped_color_prev1).any() and not (mapped_color == float('inf')).any())
+        #assert(not torch.isnan(mapped_color_prev2).any() and not (mapped_color == float('inf')).any())
 
         full_input = torch.cat([mapped_color, mapped_normal, mapped_albedo, mapped_color_prev1, mapped_color_prev2], dim=1)
 
@@ -239,19 +263,19 @@ class DenoiserModel(nn.Module):
         out = self.dec_block3(out)
         out = torch.cat([out[:, 0:32, ...] + enc2_out, out[:, 32:, ...]], dim=1)
         out = self.dec_block2(out)
-        out = torch.cat([out[:, 0:8, ...] + enc1_out, out[:, 8:, ...]], dim=1)
+        out = torch.cat([out[:, 0:16, ...] + enc1_out, out[:, 16:, ...]], dim=1)
         out = self.dec_block1(out)
 
-        out = torch.cat([out[:, 0:8, ...] + mixed, out[:, 8:, ...]], dim=1)
+        out = torch.cat([out[:, 0:16, ...] + mixed, out[:, 16:, ...]], dim=1)
         output = self.final(out)
 
-        return self.filter_func(color, output)
+        return self.filter_func(color, albedo, output)
 
-    def get_luminance(self, color):
-        return color[:, 0, ...] / 4 + color[:, 1, ...] / 2 + color[:, 2, ...] / 4
+    def albedo_prediction(self, color, albedo, output):
+        return albedo * torch.expm1(output)
 
-    def direct_prediction(self, color, output):
-        return output * 0.0001
+    def direct_prediction(self, color, albedo, output):
+        return torch.expm1(output)
 
     def make_mn_weights(self, params):
         width, height = params.shape[-1], params.shape[-2]
@@ -284,7 +308,7 @@ class DenoiserModel(nn.Module):
 
         return weights
 
-    def mitchell_netravali(self, color, params):
+    def mitchell_netravali(self, color, albedo, params):
         width, height = color.shape[-1], color.shape[-2]
 
         radius = self.kernel_size // 2

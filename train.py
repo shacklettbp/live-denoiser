@@ -19,7 +19,7 @@ dev = torch.device("cuda:{}".format(args.gpu))
 if args.vanilla_net:
     model = VanillaDenoiserModel(init=args.restore is None).to(dev)
 else:
-    model = TemporalDenoiserModel(recurrent=args.recurrent, init=args.restore is None).to(dev)
+    model = TemporalDenoiserModel(recurrent=not args.disable_recurrence, init=args.restore is None).to(dev)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))
 state_mgr = StateManager(args, model, optimizer, dev)
 
@@ -28,7 +28,8 @@ state_mgr = StateManager(args, model, optimizer, dev)
 #                          reference_path=args.reference_set,
 #                          num_imgs=args.num_pairs)
 dataset = PreProcessedDataset(dataset_path=args.training_set,
-                              num_imgs=args.num_pairs)
+                              num_imgs=args.num_pairs,
+                              augment=True)
 dataloader = DataLoader(dataset, batch_size=args.batch_size, num_workers=8,
                         shuffle=True,
                         pin_memory=True)

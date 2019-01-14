@@ -2,6 +2,7 @@ import torch.utils.data
 import os
 from glob import glob
 from data_loading import pad_data, load_exr, load_raw
+import numpy as np
 import random
 
 def get_files(dir, extension, num_imgs=None):
@@ -43,6 +44,12 @@ class DenoiserDataset(torch.utils.data.Dataset):
         #    ref = ref.flip(-1)
         #    normal = normal.flip(-1)
         #    albedo = albedo.flip(-1)
+
+        #color_indices = np.random.permutation(3)
+
+        #color = color[:, color_indices, ...]
+        #ref = ref[:, color_indices, ...]
+        #albedo = albedo[:, color_indices, ...]
 
         return [ color, normal, albedo, ref ]
 
