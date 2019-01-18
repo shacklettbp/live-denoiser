@@ -28,6 +28,7 @@ dataset = ExrDataset(want_reference=False,
 for i in range(args.start_frame, len(dataset)):
     color, normal, albedo = dataset[i]
     color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
+    color[torch.isnan(color)] = 0
     color, normal, albedo = pad_data(color), pad_data(normal), pad_data(albedo)
     color, normal, albedo = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0)
 

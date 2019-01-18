@@ -153,6 +153,7 @@ class DenoiserModel(nn.Module):
     def __init__(self, init):
         super(DenoiserModel, self).__init__()
         self.filter_func = self.direct_prediction
+        #self.filter_func = self.albedo_prediction
         #self.kernel_size = 21
         #self.filter_func = self.mitchell_netravali
 
@@ -234,19 +235,23 @@ class DenoiserModel(nn.Module):
         if init:
             self.apply(init_weights)
 
-    def forward(self, color, normal, albedo, color_prev1, color_prev2):
+    def forward(self, color, normal, albedo, color_prev1, color_prev2, albedo_prev1, albedo_prev2):
+        eps = 0.00001
+        #color = color / (albedo + eps)
+        #color_prev1 = color_prev1 / (albedo_prev1 + eps)
+        #color_prev2 = color_prev2 / (albedo_prev2 + eps)
+
+        assert(not torch.isnan(color).any() and not (color == float('inf')).any())
+        assert(not torch.isnan(normal).any() and not (normal == float('inf')).any())
+        assert(not torch.isnan(albedo).any() and not (albedo == float('inf')).any())
+        #assert(not torch.isnan(color_prev1).any() and not (color_prev1 == float('inf')).any())
+        #assert(not torch.isnan(color_prev2).any() and not (color_prev2 == float('inf')).any())
+
         mapped_color = torch.log1p(color)
         mapped_normal = normal
         mapped_albedo = torch.log1p(albedo)
-
-        mapped_color_prev1 = torch.log1p(color_prev1)
-        mapped_color_prev2 = torch.log1p(color_prev2)
-
-        assert(not torch.isnan(mapped_color).any() and not (mapped_color == float('inf')).any())
-        assert(not torch.isnan(mapped_normal).any() and not (mapped_normal == float('inf')).any())
-        assert(not torch.isnan(mapped_albedo).any() and not (mapped_albedo == float('inf')).any())
-        #assert(not torch.isnan(mapped_color_prev1).any() and not (mapped_color == float('inf')).any())
-        #assert(not torch.isnan(mapped_color_prev2).any() and not (mapped_color == float('inf')).any())
+        mapped_color_prev1 = torch.log1p(color_prev1.clamp(min=-0.9))
+        mapped_color_prev2 = torch.log1p(color_prev2.clamp(min=-0.9))
 
         full_input = torch.cat([mapped_color, mapped_normal, mapped_albedo, mapped_color_prev1, mapped_color_prev2], dim=1)
 
@@ -276,6 +281,7 @@ class DenoiserModel(nn.Module):
 
     def direct_prediction(self, color, albedo, output):
         return torch.expm1(output)
+        #return output
 
     def make_mn_weights(self, params):
         width, height = params.shape[-1], params.shape[-2]
@@ -379,7 +385,7 @@ class TemporalDenoiserModel(nn.Module):
         self.recurrent = recurrent
         self.model = DenoiserModel(*args, **kwargs)
 
-    def forward(self, color, normal, albedo, color_prev1=None, color_prev2=None):
+    def forward(self, color, normal, albedo, color_prev1=None, color_prev2=None, albedo_prev1=None, albedo_prev2=None):
         color = color.transpose(0, 1)
         normal = normal.transpose(0, 1)
         albedo = albedo.transpose(0, 1)
@@ -389,16 +395,24 @@ class TemporalDenoiserModel(nn.Module):
         if color_prev2 is None:
             color_prev2 = torch.zeros_like(color[0])
 
+        if albedo_prev1 is None:
+            albedo_prev1 = torch.zeros_like(albedo[0])
+        if albedo_prev2 is None:
+            albedo_prev2 = torch.zeros_like(albedo[0])
+
         all_outputs = []
         for i in range(color.shape[0]):
-            output = self.model(color[i], normal[i], albedo[i], color_prev1, color_prev2)
+            output = self.model(color[i], normal[i], albedo[i], color_prev1, color_prev2, albedo_prev1, albedo_prev2)
             color_prev2 = color_prev1
+            albedo_prev2 = albedo_prev1
 
             if self.recurrent:
                 color_prev1 = output
             else:
                 color_prev1 = color[i]
 
+            albedo_prev1 = albedo[i]
+            
             all_outputs.append(output)
 
         return torch.stack(all_outputs, dim=1)

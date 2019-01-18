@@ -1,6 +1,6 @@
 import torchvision
 from utils import tonemap
-from data_loading import load_raw
+from data_loading import load_raw, save_exr
 import sys
 
 src = sys.argv[1]
@@ -9,5 +9,4 @@ dim_x = int(sys.argv[3])
 dim_y = int(sys.argv[4])
 
 tensor = load_raw(src, (3, dim_y, dim_x))
-img = torchvision.transforms.ToPILImage()(tonemap(tensor).clamp(0, 1.0))
-img.save(dst)
+save_exr(tensor, dst)

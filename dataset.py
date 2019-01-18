@@ -1,16 +1,20 @@
 import torch.utils.data
 import os
 from glob import glob
-from data_loading import pad_data, load_exr, load_raw
+from data_loading import pad_data, load_exr, load_raw, dump_raw
 import numpy as np
 import random
+import sys
 
-def get_files(dir, extension, num_imgs=None):
+def get_files(dir, extension, num_imgs=None, one_idx=False):
     files = []
     dir = os.path.expanduser(dir)
     if num_imgs is None:
         num_imgs = len(glob(os.path.join(dir, 'hdr*.{}'.format(extension))))
-    for i in range(num_imgs):
+
+    start = 1 if one_idx else 0
+    end = num_imgs + 1 if one_idx else num_imgs
+    for i in range(start, end):
         files.append((os.path.join(dir, "hdr_{}.{}".format(i, extension)),
                       os.path.join(dir, "normal_{}.{}".format(i, extension)),
                       os.path.join(dir, "albedo_{}.{}".format(i, extension)),
@@ -45,14 +49,64 @@ class DenoiserDataset(torch.utils.data.Dataset):
         #    normal = normal.flip(-1)
         #    albedo = albedo.flip(-1)
 
-        #color_indices = np.random.permutation(3)
+        color_indices = np.random.permutation(3)
 
-        #color = color[:, color_indices, ...]
-        #ref = ref[:, color_indices, ...]
-        #albedo = albedo[:, color_indices, ...]
+        color = color[:, color_indices, ...]
+        ref = ref[:, color_indices, ...]
+        albedo = albedo[:, color_indices, ...]
 
         return [ color, normal, albedo, ref ]
 
+class FullFrameDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset_path):
+        self.files = get_files(dataset_path, 'exr', one_idx=True)
+        self.cropsize = (256, 256)
+        assert(len(self.files) > 0)
+
+    def __len__(self):
+        return len(self.files) - 2
+
+    def get_tensors(self, idx):
+        color, normal, albedo, _ = self.files[idx]
+
+        color = load_exr(color)
+        normal = load_exr(normal)
+        albedo = load_exr(albedo)
+
+        color[color != color] = 0
+
+        assert(not torch.isnan(color).any() and not (color == float('inf')).any())
+        assert(not torch.isnan(normal).any() and not (normal == float('inf')).any())
+        assert(not torch.isnan(albedo).any() and not (albedo == float('inf')).any())
+
+        color = pad_data(color)
+        normal = pad_data(normal)
+        albedo = pad_data(albedo)
+
+        return [color, normal, albedo]
+
+    def get_random(self):
+        color, _, _, _ = self.files[random.randint(0, len(self) - 1)]
+
+        return pad_data(load_exr(color))
+
+    def __getitem__(self, idx):
+        colors = []
+        normals = []
+        albedos = []
+        refs = []
+
+        for i in range(3):
+            color, normal, albedo = self.get_tensors(idx + i)
+            ref = self.get_random()
+            
+            colors.append(color)
+            normals.append(normal)
+            albedos.append(albedo)
+            refs.append(ref)
+
+        return [torch.stack(colors), torch.stack(normals), torch.stack(albedos), torch.stack(refs)]
+        
 class ExrDataset(DenoiserDataset):
     def __init__(self, want_reference=True, *args, **kwargs):
         super(ExrDataset, self).__init__('exr', *args, **kwargs)

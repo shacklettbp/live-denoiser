@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from arg_handler import parse_train_args
 from model import DenoiserModel, TemporalDenoiserModel
 from vanilla_model import VanillaDenoiserModel
-from dataset import NumpyRawDataset, PreProcessedDataset
+from dataset import NumpyRawDataset, PreProcessedDataset, FullFrameDataset
 from state import StateManager
 from loss import compute_loss
 from utils import iter_with_device
@@ -27,10 +27,8 @@ state_mgr = StateManager(args, model, optimizer, dev)
 #                          training_path=args.training_set,
 #                          reference_path=args.reference_set,
 #                          num_imgs=args.num_pairs)
-dataset = PreProcessedDataset(dataset_path=args.training_set,
-                              num_imgs=args.num_pairs,
-                              augment=True)
-dataloader = DataLoader(dataset, batch_size=args.batch_size, num_workers=8,
+dataset = FullFrameDataset(dataset_path=args.training_set)
+dataloader = DataLoader(dataset, batch_size=args.batch_size, num_workers=2,
                         shuffle=True,
                         pin_memory=True)
 
@@ -48,7 +46,7 @@ num_batches = len(dataset) / args.batch_size
 scheduler = CyclicLR(optimizer, args.lr / 10, args.lr, step_size=2*num_batches)
 
 val_dataset = PreProcessedDataset(dataset_path=args.validation_set)
-val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=8,
+val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=2,
                             shuffle=False, pin_memory=True)
 
 def train_epoch(model, optimizer, scheduler, dataloader):
