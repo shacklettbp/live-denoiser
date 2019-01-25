@@ -47,8 +47,8 @@ num_batches = len(dataset) / args.batch_size
 #scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schedule)
 scheduler = CyclicLR(optimizer, args.lr / 10, args.lr, step_size=2*num_batches)
 
-val_dataset = PreProcessedDataset(dataset_path=args.validation_set)
-val_dataloader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=8,
+val_dataset = PreProcessedDataset(dataset_path=args.validation_set, augment=False)
+val_dataloader = DataLoader(val_dataset, batch_size=1, num_workers=2,
                             shuffle=False, pin_memory=True)
 
 def train_epoch(model, optimizer, scheduler, dataloader):

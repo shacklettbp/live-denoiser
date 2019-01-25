@@ -1,8 +1,10 @@
 import torch
+import torchvision
 import OpenEXR
 import Imath
 import numpy as np
 import torch.nn.functional as F
+from utils import tonemap
 
 def roundup(num, mul):
     rounded = (num // mul)
@@ -66,3 +68,7 @@ def save_exr(tensor, filename):
     header['compression'] = Imath.Compression(Imath.Compression.PIZ_COMPRESSION)
     out = OpenEXR.OutputFile(filename, header)
     out.writePixels({'R' : R, 'G': G, 'B': B })
+
+def save_png(tensor, filename):
+    img = torchvision.transforms.ToPILImage()(tonemap(tensor).clamp(0, 1.0))
+    img.save(filename)

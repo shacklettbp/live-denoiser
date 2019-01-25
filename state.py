@@ -6,6 +6,28 @@ import glob
 import re
 import pygit2
 import os
+from collections import OrderedDict
+
+def convert_to_cpu(state):
+    if isinstance(state, torch.Tensor):
+        return state.cpu()
+    elif isinstance(state, float) or isinstance(state, int):
+        return state
+    elif isinstance(state, dict):
+        cpu_state_dict = OrderedDict()
+        for key in state.keys():
+            cpu_state_dict[key] = convert_to_cpu(state[key])
+        return cpu_state_dict
+    elif isinstance(state, list):
+        return [convert_to_cpu(elem) for elem in state]
+    elif isinstance(state, tuple):
+        return tuple(convert_to_cpu(elem) for elem in state)
+    else:
+        print(type(state))
+        assert(False)
+
+def save_with_cpu(state_dict, path):
+    torch.save(convert_to_cpu(state_dict), path)
 
 class StateManager:
     def __init__(self, args, model, optimizer, device):
@@ -39,12 +61,12 @@ class StateManager:
             optimizer.load_state_dict(torch.load(optim_state_path, map_location='cpu'))
 
     def save_state(self, model, optimizer, epoch):
-        torch.save(model.state_dict(),
-                   os.path.join(self.weights_dir,
-                                "weights_{}.pth".format(epoch)))
-        torch.save(optimizer.state_dict(),
-                   os.path.join(self.weights_dir,
-                                "optim_{}".format(epoch)))
+        save_with_cpu(model.state_dict(),
+                      os.path.join(self.weights_dir,
+                                   "weights_{}.pth".format(epoch)))
+        save_with_cpu(optimizer.state_dict(),
+                      os.path.join(self.weights_dir,
+                                   "optim_{}".format(epoch)))
                                         
 
     def get_start_epoch(self):

@@ -63,11 +63,12 @@ for idx in range(0, len(files) - args.num_temporal, args.num_temporal + 1):
     for i in range(args.num_temporal + 1):
         hdr_fn, normal_fn, albedo_fn, ref_fn = files[idx + i]
         if ref_files is not None:
-            r_idx = idx
-            while r_idx == idx:
-                r_idx = random.randint(0, len(files) - args.num_temporal - 1)
+            ref_fn = args.ref
+            #r_idx = idx
+            #while r_idx == idx:
+            #    r_idx = random.randint(0, len(files) - args.num_temporal - 1)
 
-            ref_fn, _, _, _  = ref_files[r_idx]
+            #ref_fn, _, _, _  = ref_files[r_idx]
 
         hdr.append(load_exr(hdr_fn))
         normal.append(load_exr(normal_fn))

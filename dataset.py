@@ -5,6 +5,8 @@ from data_loading import pad_data, load_exr, load_raw, dump_raw
 import numpy as np
 import random
 import sys
+import re
+from ast import literal_eval
 
 def get_files(dir, extension, num_imgs=None, one_idx=False):
     files = []
@@ -49,11 +51,11 @@ class DenoiserDataset(torch.utils.data.Dataset):
         #    normal = normal.flip(-1)
         #    albedo = albedo.flip(-1)
 
-        color_indices = np.random.permutation(3)
+        #color_indices = np.random.permutation(3)
 
-        color = color[:, color_indices, ...]
-        ref = ref[:, color_indices, ...]
-        albedo = albedo[:, color_indices, ...]
+        #color = color[:, color_indices, ...]
+        #ref = ref[:, color_indices, ...]
+        #albedo = albedo[:, color_indices, ...]
 
         return [ color, normal, albedo, ref ]
 
@@ -180,25 +182,42 @@ class PreProcessedDataset(DenoiserDataset):
         dir = os.path.expanduser(dir)
         if num_imgs is None:
             num_imgs = len(glob(os.path.join(dir, 'hdr_*_0_0.dmp')))
-        num_crops = len(glob(os.path.join(dir, 'hdr_0_*_0.dmp')))
         num_temporal = len(glob(os.path.join(dir, 'hdr_0_0_*.dmp')))
-        for i in range(num_imgs):
+
+        for first_name in glob(os.path.join(dir, 'hdr_*_0_0.dmp')):
+            cur_frame = int(self.name_pattern.search(first_name).group(1))
+
+            num_crops = len(glob(os.path.join(dir, 'hdr_{}_*_0.dmp'.format(cur_frame))))
             for crop in range(num_crops):
                 temporal = []
                 for temporal_idx in range(num_temporal):
-                    temporal.append((os.path.join(dir, "hdr_{}_{}_{}.dmp".format(i, crop, temporal_idx)),
-                              os.path.join(dir, "normal_{}_{}_{}.dmp".format(i, crop, temporal_idx)),
-                              os.path.join(dir, "albedo_{}_{}_{}.dmp".format(i, crop, temporal_idx)),
-                              os.path.join(dir, "ref_{}_{}_{}.dmp".format(i, crop, temporal_idx))))
+                    temporal.append((os.path.join(dir, "hdr_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx)),
+                              os.path.join(dir, "normal_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx)),
+                              os.path.join(dir, "albedo_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx)),
+                              os.path.join(dir, "ref_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx))))
                 files.append(temporal)
 
         return files
 
     def __init__(self, dataset_path, num_imgs=None, size=(256, 256), augment=True):
+        self.name_pattern = re.compile('hdr_(\d+)_0_0.dmp')
+
+        try:
+            f = open(os.path.join(dataset_path, 'metadata'))
+        except:
+            f = None
+
+        if f is not None:
+            with f:
+                line = f.readline()
+                size = literal_eval(line)
+
         self.perform_augmentations = augment
         self.cropsize = size
         self.fullshape = (3, *size)
         self.training_files = self.get_crop_files(dataset_path, num_imgs)
+
+        self.need_pad = size[0] % 32 != 0 or size[1] % 32 != 0
 
     def __getitem__(self, idx):
         _, height, width = self.fullshape
@@ -213,5 +232,11 @@ class PreProcessedDataset(DenoiserDataset):
         normal_tensor = torch.stack(normal)
         albedo_tensor = torch.stack(albedo)
         reference_tensor = torch.stack(reference)
+
+        if self.need_pad:
+            color_tensor = pad_data(color_tensor)
+            normal_tensor = pad_data(normal_tensor)
+            albedo_tensor = pad_data(albedo_tensor)
+            reference_tensor = pad_data(reference_tensor)
 
         return self.augment(color_tensor, normal_tensor, albedo_tensor, reference_tensor)

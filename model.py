@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from utils import tonemap
 
-num_input_channels = 15
+num_input_channels = 9
 kernel_size = 3
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, relu=True, leaky=True, kernel_size=(3, 3), batchnorm=True):
@@ -236,8 +236,8 @@ class DenoiserModel(nn.Module):
             self.apply(init_weights)
 
     def forward(self, color, normal, albedo, color_prev1, color_prev2, albedo_prev1, albedo_prev2):
-        eps = 0.00001
-        #color = color / (albedo + eps)
+        eps = 0.001
+        color = color / (albedo + eps)
         #color_prev1 = color_prev1 / (albedo_prev1 + eps)
         #color_prev2 = color_prev2 / (albedo_prev2 + eps)
 
@@ -250,10 +250,11 @@ class DenoiserModel(nn.Module):
         mapped_color = torch.log1p(color)
         mapped_normal = normal
         mapped_albedo = torch.log1p(albedo)
-        mapped_color_prev1 = torch.log1p(color_prev1.clamp(min=-0.9))
-        mapped_color_prev2 = torch.log1p(color_prev2.clamp(min=-0.9))
+        #mapped_color_prev1 = torch.log1p(color_prev1.clamp(min=-0.9))
+        #mapped_color_prev2 = torch.log1p(color_prev2.clamp(min=-0.9))
 
-        full_input = torch.cat([mapped_color, mapped_normal, mapped_albedo, mapped_color_prev1, mapped_color_prev2], dim=1)
+        #full_input = torch.cat([mapped_color, mapped_normal, mapped_albedo, mapped_color_prev1, mapped_color_prev2], dim=1)
+        full_input = torch.cat([mapped_color, mapped_normal, mapped_albedo], dim=1)
 
         mixed = self.mixstart(full_input)
         enc1_out = self.enc_block1(mixed)
@@ -274,7 +275,7 @@ class DenoiserModel(nn.Module):
         out = torch.cat([out[:, 0:16, ...] + mixed, out[:, 16:, ...]], dim=1)
         output = self.final(out)
 
-        return self.filter_func(color, albedo, output)
+        return self.filter_func(color, albedo, output) * (albedo + eps)
 
     def albedo_prediction(self, color, albedo, output):
         return albedo * torch.expm1(output)
