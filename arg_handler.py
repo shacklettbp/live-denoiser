@@ -31,5 +31,6 @@ def parse_infer_args():
     parser.add_argument('--outputs', type=str, default='outputs')
     parser.add_argument('--num-imgs', type=int, default=None)
     parser.add_argument('--start-frame', type=int, default=0)
+    parser.add_argument('--loss-check', type=str, default=None)
 
     return parser.parse_args()

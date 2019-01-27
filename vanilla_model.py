@@ -115,3 +115,20 @@ class VanillaDenoiserModel(nn.Module):
         output = self.decoder(enc_outs)
 
         return output
+
+class TemporalVanillaDenoiserModel(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super(TemporalVanillaDenoiserModel, self).__init__()
+        self.model = VanillaDenoiserModel(*args, **kwargs)
+
+    def forward(self, color, normal, albedo, color_prev1=None, color_prev2=None, albedo_prev1=None, albedo_prev2=None):
+        color = color.transpose(0, 1)
+        normal = normal.transpose(0, 1)
+        albedo = albedo.transpose(0, 1)
+
+        all_outputs = []
+        for i in range(color.shape[0]):
+            output = self.model(color[i], normal[i], albedo[i])
+            all_outputs.append(output)
+
+        return torch.stack(all_outputs, dim=1)

@@ -27,8 +27,8 @@ class Conv(nn.Module):
         else:
             self.init_nonlinearity = 'linear'
 
-        if batchnorm:
-            cur.append(nn.BatchNorm2d(out_channels))
+        #if batchnorm:
+        #    cur.append(nn.BatchNorm2d(out_channels))
 
         self.model = nn.Sequential(*cur)
 
@@ -67,8 +67,8 @@ class JitNetBlock(nn.Module):
         else:
             self.skip = None
 
-        self.post = nn.Sequential(nn.ReLU(),
-                                  nn.BatchNorm2d(out_channels))
+        self.post = nn.Sequential(nn.ReLU())
+                                  #nn.BatchNorm2d(out_channels))
 
         self.upsample = upsample
 
@@ -169,7 +169,7 @@ class DenoiserModel(nn.Module):
                                                 stride=1,
                                                 kernel_size=(1, 1)),
                                       nn.ReLU(),
-                                      nn.BatchNorm2d(16),
+                                      #nn.BatchNorm2d(16),
                                       nn.Conv2d(in_channels=16,
                                                 out_channels=16,
                                                 groups=16,
@@ -178,8 +178,8 @@ class DenoiserModel(nn.Module):
                                       nn.Conv2d(in_channels=16,
                                                 out_channels=16,
                                                 kernel_size=(1, 1)),
-                                      nn.ReLU(),
-                                      nn.BatchNorm2d(16))
+                                      nn.ReLU())
+                                      #nn.BatchNorm2d(16))
 
         self.enc_block1 = JitNetBlock(in_channels=16,
                                       out_channels=16,
@@ -275,7 +275,9 @@ class DenoiserModel(nn.Module):
         out = torch.cat([out[:, 0:16, ...] + mixed, out[:, 16:, ...]], dim=1)
         output = self.final(out)
 
-        return self.filter_func(color, albedo, output) * (albedo + eps)
+        filtered = self.filter_func(color, albedo, output)
+
+        return filtered * (albedo + eps), filtered
 
     def albedo_prediction(self, color, albedo, output):
         return albedo * torch.expm1(output)
@@ -402,8 +404,9 @@ class TemporalDenoiserModel(nn.Module):
             albedo_prev2 = torch.zeros_like(albedo[0])
 
         all_outputs = []
+        e_irradiances = []
         for i in range(color.shape[0]):
-            output = self.model(color[i], normal[i], albedo[i], color_prev1, color_prev2, albedo_prev1, albedo_prev2)
+            output, e_irradiance = self.model(color[i], normal[i], albedo[i], color_prev1, color_prev2, albedo_prev1, albedo_prev2)
             color_prev2 = color_prev1
             albedo_prev2 = albedo_prev1
 
@@ -415,5 +418,6 @@ class TemporalDenoiserModel(nn.Module):
             albedo_prev1 = albedo[i]
             
             all_outputs.append(output)
+            e_irradiances.append(e_irradiance)
 
-        return torch.stack(all_outputs, dim=1)
+        return torch.stack(all_outputs, dim=1), torch.stack(e_irradiances, dim=1)

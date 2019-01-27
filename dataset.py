@@ -178,24 +178,28 @@ class NumpyRawDataset(DenoiserDataset):
 
 class PreProcessedDataset(DenoiserDataset):
     def get_crop_files(self, dir, num_imgs):
-        files = []
         dir = os.path.expanduser(dir)
         if num_imgs is None:
             num_imgs = len(glob(os.path.join(dir, 'hdr_*_0_0.dmp')))
         num_temporal = len(glob(os.path.join(dir, 'hdr_0_0_*.dmp')))
 
+        files = []
         for first_name in glob(os.path.join(dir, 'hdr_*_0_0.dmp')):
             cur_frame = int(self.name_pattern.search(first_name).group(1))
-
             num_crops = len(glob(os.path.join(dir, 'hdr_{}_*_0.dmp'.format(cur_frame))))
+
+            crops = []
             for crop in range(num_crops):
+
                 temporal = []
                 for temporal_idx in range(num_temporal):
                     temporal.append((os.path.join(dir, "hdr_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx)),
                               os.path.join(dir, "normal_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx)),
                               os.path.join(dir, "albedo_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx)),
                               os.path.join(dir, "ref_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx))))
-                files.append(temporal)
+                crops.append(temporal)
+
+            files.append(crops)
 
         return files
 
@@ -222,7 +226,9 @@ class PreProcessedDataset(DenoiserDataset):
     def __getitem__(self, idx):
         _, height, width = self.fullshape
 
-        filenames = self.training_files[idx]
+        crops = self.training_files[idx]
+        filenames = random.choice(crops)
+
         color = [load_raw(f[0], self.fullshape) for f in filenames]
         normal = [load_raw(f[1], self.fullshape) for f in filenames]
         albedo = [load_raw(f[2], self.fullshape) for f in filenames]

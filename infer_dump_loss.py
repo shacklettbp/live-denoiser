@@ -1,3 +1,5 @@
+import os
+import sys
 import torch
 import torchvision
 from dataset import ExrDataset
@@ -6,8 +8,8 @@ from arg_handler import parse_infer_args
 from model import TemporalDenoiserModel
 from vanilla_model import TemporalVanillaDenoiserModel
 from utils import tonemap
-from data_loading import pad_data, save_exr, save_png
-import os
+from data_loading import pad_data, save_exr, load_exr
+from loss import Loss
 
 args = parse_infer_args()
 dev = torch.device('cuda:{}'.format(args.gpu))
@@ -25,6 +27,14 @@ dataset = ExrDataset(want_reference=False,
                      cropsize=(args.img_height, args.img_width),
                      augment=False)
 
+if args.loss_check is None:
+    print("Provide reference image", file=sys.stderr)
+    sys.exit(1)
+
+ref_frame = load_exr(args.loss_check)
+
+loss_gen = Loss(dev)
+
 for i in range(args.start_frame, len(dataset)):
     color, normal, albedo = dataset[i]
     color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
@@ -36,13 +46,11 @@ for i in range(args.start_frame, len(dataset)):
     color_prev2 = torch.zeros_like(color)
 
     with torch.no_grad():
-        output, e_irradiance = model(color.unsqueeze(dim=1), normal.unsqueeze(dim=1), albedo.unsqueeze(dim=1),
-                                      color_prev1=color_prev1, color_prev2=color_prev2)
+        output = model(color.unsqueeze(dim=1), normal.unsqueeze(dim=1), albedo.unsqueeze(dim=1),
+                       color_prev1=color_prev1, color_prev2=color_prev2)
 
-        output = output[..., 0:args.img_height, 0:args.img_width]
-        e_irradiance = e_irradiance[..., 0:args.img_height, 0:args.img_width]
+        output = output[..., 0:args.img_height, 0:args.img_width].cpu()
         output = output.squeeze()
-        e_irradiance = e_irradiance.squeeze()
 
         if args.disable_recurrence:
             color_prev1 = color
@@ -51,7 +59,12 @@ for i in range(args.start_frame, len(dataset)):
 
         color_prev2 = color_prev1
 
-    save_exr(output, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
-    save_exr(e_irradiance, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
+        _, loss = loss_gen.compute(output.unsqueeze(dim=0), ref_frame.unsqueeze(dim=0), color.unsqueeze(dim=0))
 
-    save_png(output, os.path.join(args.outputs, 'out_{}.png'.format(i)))
+    save_exr(loss, os.path.join(args.outputs, 'loss_{}.exr'.format(i)))
+
+    tonemapped = tonemap(loss)
+    pil_txfm = torchvision.transforms.ToPILImage()
+    tonemapped = tonemapped.clamp(0.0, 1.0)
+    img = pil_txfm(tonemapped)
+    img.save(os.path.join(args.outputs, 'loss_{}.png'.format(i)))

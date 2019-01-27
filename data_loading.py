@@ -70,5 +70,5 @@ def save_exr(tensor, filename):
     out.writePixels({'R' : R, 'G': G, 'B': B })
 
 def save_png(tensor, filename):
-    img = torchvision.transforms.ToPILImage()(tonemap(tensor).clamp(0, 1.0))
+    img = torchvision.transforms.ToPILImage()(tonemap(tensor).clamp(0, 1.0).cpu())
     img.save(filename)
