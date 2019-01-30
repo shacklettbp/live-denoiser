@@ -5,8 +5,8 @@ import signal
 import sys
 from torch.utils.data import DataLoader
 from arg_handler import parse_train_args
-from model import DenoiserModel, TemporalDenoiserModel
-from vanilla_model import TemporalVanillaDenoiserModel, VanillaDenoiserModel
+from modified_model import DenoiserModel, TemporalDenoiserModel
+from modified_vanilla_model import TemporalVanillaDenoiserModel, VanillaDenoiserModel
 from dataset import NumpyRawDataset, PreProcessedDataset
 from state import StateManager
 from loss import Loss

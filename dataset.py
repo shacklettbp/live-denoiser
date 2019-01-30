@@ -6,6 +6,7 @@ import numpy as np
 import random
 import sys
 import re
+import json
 from ast import literal_eval
 
 def get_files(dir, extension, num_imgs=None, one_idx=False):
@@ -24,138 +25,79 @@ def get_files(dir, extension, num_imgs=None, one_idx=False):
 
     return files
 
-class DenoiserDataset(torch.utils.data.Dataset):
-    def __init__(self, extension, training_path, reference_path=None, num_imgs=None, cropsize=(256, 256), augment=True):
-        self.perform_augmentations = augment
+def augment_data(color, normal, albedo, ref):
+    assert(ref is not None)
+    if random.random() < 0.5:
+        color = color.flip(-1)
+        normal = normal.flip(-1)
+        albedo = albedo.flip(-1)
+        ref = ref.flip(-1)
+
+    color_indices = np.random.permutation(3)
+
+    color = color[:, color_indices, ...]
+    albedo = albedo[:, color_indices, ...]
+    ref = ref[:, color_indices, ...]
+
+    return [ color, normal, albedo, ref ]
+
+class ExrDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset_path, training=True, num_imgs=None, cropsize=None):
+        self.training = training 
+        self.files = get_files(dataset_path, 'exr', num_imgs=num_imgs)
         self.cropsize = cropsize
-        self.training_files = get_files(training_path, extension, num_imgs=num_imgs)
-        assert(len(self.training_files) > 0)
-        if reference_path:
-            self.reference_files = get_files(reference_path, extension, num_imgs=num_imgs)
-            assert(len(self.reference_files) == len(self.training_files))
 
     def __len__(self):
-        return len(self.training_files)
-
-    def augment(self, color, normal, albedo, ref):
-        if not self.perform_augmentations:
-            if ref is not None:
-                return [ color, normal, albedo, ref ]
-            else:
-                return [ color, normal, albedo ]
-
-        assert(ref is not None)
-        #if random.random() < 0.5:
-        #    color = color.flip(-1)
-        #    ref = ref.flip(-1)
-        #    normal = normal.flip(-1)
-        #    albedo = albedo.flip(-1)
-
-        #color_indices = np.random.permutation(3)
-
-        #color = color[:, color_indices, ...]
-        #ref = ref[:, color_indices, ...]
-        #albedo = albedo[:, color_indices, ...]
-
-        return [ color, normal, albedo, ref ]
-
-class FullFrameDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_path):
-        self.files = get_files(dataset_path, 'exr', one_idx=True)
-        self.cropsize = (256, 256)
-        assert(len(self.files) > 0)
-
-    def __len__(self):
-        return len(self.files) - 2
-
-    def get_tensors(self, idx):
-        color, normal, albedo, _ = self.files[idx]
-
-        color = load_exr(color)
-        normal = load_exr(normal)
-        albedo = load_exr(albedo)
-
-        color[color != color] = 0
-
-        assert(not torch.isnan(color).any() and not (color == float('inf')).any())
-        assert(not torch.isnan(normal).any() and not (normal == float('inf')).any())
-        assert(not torch.isnan(albedo).any() and not (albedo == float('inf')).any())
-
-        color = pad_data(color)
-        normal = pad_data(normal)
-        albedo = pad_data(albedo)
-
-        return [color, normal, albedo]
-
-    def get_random(self):
-        color, _, _, _ = self.files[random.randint(0, len(self) - 1)]
-
-        return pad_data(load_exr(color))
+        return len(self.files)
 
     def __getitem__(self, idx):
-        colors = []
-        normals = []
-        albedos = []
-        refs = []
+        hdr_filename, normal_filename, albedo_filename, ref_hdr_filename = self.files[idx]
 
-        for i in range(3):
-            color, normal, albedo = self.get_tensors(idx + i)
-            ref = self.get_random()
-            
-            colors.append(color)
-            normals.append(normal)
-            albedos.append(albedo)
-            refs.append(ref)
+        color = load_exr(hdr_filename)
+        normal = load_exr(normal_filename)
+        albedo = load_exr(albedo_filename)
+        reference = load_exr(ref_hdr_filename) if self.training else None
 
-        return [torch.stack(colors), torch.stack(normals), torch.stack(albedos), torch.stack(refs)]
-        
-class ExrDataset(DenoiserDataset):
-    def __init__(self, want_reference=True, *args, **kwargs):
-        super(ExrDataset, self).__init__('exr', *args, **kwargs)
-        self.want_reference = want_reference
+        _, height, width = color.shape
 
-    def __getitem__(self, idx):
-        hdr_filename, normal_filename, albedo_filename, ref_hdr_filename = self.training_files[idx]
+        if self.cropsize is not None:
+            max_top = height - self.cropsize[0]
+            max_left = width - self.cropsize[1]
 
-        color_tensor = load_exr(hdr_filename)
-        normal_tensor = load_exr(normal_filename)
-        albedo_tensor = load_exr(albedo_filename)
+            col_idx = random.randint(0, max_left)
+            row_idx = random.randint(0, max_top)
 
-        _, height, width = color_tensor.shape
+            color = color[...,
+                          row_idx:row_idx+self.cropsize[0],
+                          col_idx:col_idx+self.cropsize[1]]
 
-        max_top = height - self.cropsize[0]
-        max_left = width - self.cropsize[1]
+            normal = normal[...,
+                            row_idx:row_idx+self.cropsize[0],
+                            col_idx:col_idx+self.cropsize[1]]
 
-        col_idx = random.randint(0, max_left)
-        row_idx = random.randint(0, max_top)
+            albedo = albedo[...,
+                            row_idx:row_idx+self.cropsize[0],
+                            col_idx:col_idx+self.cropsize[1]]
 
-        color_tensor = color_tensor[...,
-                                    row_idx:row_idx+self.cropsize[0],
-                                    col_idx:col_idx+self.cropsize[1]]
+            if self.training:
+                reference = reference[...,
+                                      row_idx:row_idx+self.cropsize[0],
+                                      col_idx:col_idx+self.cropsize[1]]
 
-        if self.want_reference:
-            reference_tensor = load_exr(ref_hdr_filename)
-            reference_tensor = reference_tensor[...,
-                                                row_idx:row_idx+self.cropsize[0],
-                                                col_idx:col_idx+self.cropsize[1]]
+        if self.training:
+            return augment_data(color, normal, albedo, reference)
         else:
-            reference_tensor = None
-
-        normal_tensor = normal_tensor[...,
-                                      row_idx:row_idx+self.cropsize[0],
-                                      col_idx:col_idx+self.cropsize[1]]
-
-        albedo_tensor = albedo_tensor[...,
-                                      row_idx:row_idx+self.cropsize[0],
-                                      col_idx:col_idx+self.cropsize[1]]
-
-        return self.augment(color_tensor, normal_tensor, albedo_tensor, reference_tensor)
+            return [ color, normal, albedo ]
 
 # FIXME out of date
-class NumpyRawDataset(DenoiserDataset):
-    def __init__(self, fullshape, *args, **kwargs):
-        super(NumpyRawDataset, self).__init__('dmp', *args, **kwargs)
+class NumpyRawDataset(torch.utils.data.Dataset):
+    def __init__(self, fullshape, cropsize, num_imgs=None):
+        self.files = get_files('dmp', num_imgs=num_imgs)
         self.fullshape = fullshape
+        self.cropsize = cropsize
+
+    def __len__(self):
+        return len(self.files)
 
     def __getitem__(self, idx):
         _, height, width = self.fullshape
@@ -176,57 +118,37 @@ class NumpyRawDataset(DenoiserDataset):
 
         return self.augment(color_tensor, reference_tensor, normal_tensor, albedo_tensor)
 
-class PreProcessedDataset(DenoiserDataset):
-    def get_crop_files(self, dir, num_imgs):
-        dir = os.path.expanduser(dir)
-        if num_imgs is None:
-            num_imgs = len(glob(os.path.join(dir, 'hdr_*_0_0.dmp')))
-        num_temporal = len(glob(os.path.join(dir, 'hdr_0_0_*.dmp')))
+class PreProcessedDataset(torch.utils.data.Dataset):
+    def __init__(self, dataset_path, augment=True):
+        dataset_path = os.path.expanduser(dataset_path)
 
-        files = []
-        for first_name in glob(os.path.join(dir, 'hdr_*_0_0.dmp')):
-            cur_frame = int(self.name_pattern.search(first_name).group(1))
-            num_crops = len(glob(os.path.join(dir, 'hdr_{}_*_0.dmp'.format(cur_frame))))
+        with open(os.path.join(dataset_path, 'metadata.json')) as f:
+            metadata = json.load(f)
 
-            crops = []
-            for crop in range(num_crops):
-
-                temporal = []
-                for temporal_idx in range(num_temporal):
-                    temporal.append((os.path.join(dir, "hdr_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx)),
-                              os.path.join(dir, "normal_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx)),
-                              os.path.join(dir, "albedo_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx)),
-                              os.path.join(dir, "ref_{}_{}_{}.dmp".format(cur_frame, crop, temporal_idx))))
-                crops.append(temporal)
-
-            files.append(crops)
-
-        return files
-
-    def __init__(self, dataset_path, num_imgs=None, size=(256, 256), augment=True):
-        self.name_pattern = re.compile('hdr_(\d+)_0_0.dmp')
-
-        try:
-            f = open(os.path.join(dataset_path, 'metadata'))
-        except:
-            f = None
-
-        if f is not None:
-            with f:
-                line = f.readline()
-                size = literal_eval(line)
+        size = metadata['size']
 
         self.perform_augmentations = augment
-        self.cropsize = size
-        self.fullshape = (3, *size)
-        self.training_files = self.get_crop_files(dataset_path, num_imgs)
+        self.fullshape = (3, size[1], size[0])
+        files = metadata['files']
+
+        for crop_files in files:
+            for temporal_files in crop_files:
+                for imgs in temporal_files:
+                    for i, fname in enumerate(imgs):
+                        imgs[i] = os.path.join(dataset_path, fname)
+
+        self.files = files
 
         self.need_pad = size[0] % 32 != 0 or size[1] % 32 != 0
+        self.perform_augmentations = augment
+
+    def __len__(self):
+        return len(self.files)
 
     def __getitem__(self, idx):
         _, height, width = self.fullshape
 
-        crops = self.training_files[idx]
+        crops = self.files[idx]
         filenames = random.choice(crops)
 
         color = [load_raw(f[0], self.fullshape) for f in filenames]
@@ -245,4 +167,7 @@ class PreProcessedDataset(DenoiserDataset):
             albedo_tensor = pad_data(albedo_tensor)
             reference_tensor = pad_data(reference_tensor)
 
-        return self.augment(color_tensor, normal_tensor, albedo_tensor, reference_tensor)
+        if self.perform_augmentations:
+            return augment_data(color_tensor, normal_tensor, albedo_tensor, reference_tensor)
+        else:
+            return [color_tensor, normal_tensor, albedo_tensor, reference_tensor]

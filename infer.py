@@ -3,8 +3,8 @@ import torchvision
 from dataset import ExrDataset
 from state import StateManager
 from arg_handler import parse_infer_args
-from model import TemporalDenoiserModel
-from vanilla_model import TemporalVanillaDenoiserModel
+from modified_model import TemporalDenoiserModel
+from modified_vanilla_model import TemporalVanillaDenoiserModel
 from utils import tonemap
 from data_loading import pad_data, save_exr, save_png
 import os
@@ -19,16 +19,13 @@ else:
 model.load_state_dict(torch.load(args.weights, map_location='cpu'))
 model.eval()
 
-dataset = ExrDataset(want_reference=False,
-                     training_path=args.inputs,
-                     num_imgs=args.num_imgs,
-                     cropsize=(args.img_height, args.img_width),
-                     augment=False)
+dataset = ExrDataset(dataset_path=args.inputs,
+                     training=False,
+                     num_imgs=args.num_imgs)
 
 for i in range(args.start_frame, len(dataset)):
     color, normal, albedo = dataset[i]
     color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
-    color[torch.isnan(color)] = 0
     color, normal, albedo = pad_data(color), pad_data(normal), pad_data(albedo)
     color, normal, albedo = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0)
 

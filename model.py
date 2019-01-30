@@ -55,17 +55,17 @@ class JitNetBlock(nn.Module):
                                        relu=False,
                                        batchnorm=False))
 
-        if in_channels != out_channels:
-            self.skip = Conv(in_channels=in_channels,
-                             out_channels=out_channels,
-                             kernel_size=(1,1),
-                             stride=stride,
-                             relu=False,
-                             batchnorm=False)
-        elif stride > 1:
-            self.skip = nn.MaxPool2d(kernel_size=stride, stride=stride)
-        else:
-            self.skip = None
+        #if in_channels != out_channels:
+        #    self.skip = Conv(in_channels=in_channels,
+        #                     out_channels=out_channels,
+        #                     kernel_size=(1,1),
+        #                     stride=stride,
+        #                     relu=False,
+        #                     batchnorm=False)
+        #elif stride > 1:
+        #    self.skip = nn.MaxPool2d(kernel_size=stride, stride=stride)
+        #else:
+        #    self.skip = None
 
         self.post = nn.Sequential(nn.ReLU())
                                   #nn.BatchNorm2d(out_channels))
@@ -74,8 +74,10 @@ class JitNetBlock(nn.Module):
 
     def forward(self, input):
         out = self.main(input)
-        if self.skip is not None:
-            out = out + self.skip(input)
+        #if self.skip is not None:
+        #    out = out + self.skip(input)
+        #else:
+        #    out = out + input
 
         out = self.post(out)
         if self.upsample > 1:
@@ -98,48 +100,9 @@ def create_layers(sizes_num_layers, layer_input_sizes):
 
     return layers
 
-class DenoiserEncoder(nn.Module):
-    def __init__(self, sizes_num_layers, layer_input_sizes):
-        super(DenoiserEncoder, self).__init__()
-        self.encoder_layers = create_layers(sizes_num_layers, layer_input_sizes)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
-
-    def forward(self, inputs):
-        cur = inputs
-        outputs = []
-        for i, enc in enumerate(self.encoder_layers):
-            cur = enc(cur)
-            outputs.append(cur)
-            if i != len(self.encoder_layers) - 1:
-                cur = self.pool(cur)
-
-        return outputs
-
-class DenoiserDecoder(nn.Module):
-    def __init__(self, sizes_num_layers, layer_input_sizes, num_output_channels):
-        super(DenoiserDecoder, self).__init__()
-        self.decoder_layers = create_layers(sizes_num_layers, layer_input_sizes)
-
-        self.upsample = nn.Upsample(scale_factor=2, mode='nearest')
-        self.final = Conv(in_channels=sizes_num_layers[-1][-1],
-                          out_channels=num_output_channels,
-                          relu=False)
-
-    def forward(self, enc_outputs):
-        cur = enc_outputs[-1]
-        for dec, enc_output in zip(self.decoder_layers, reversed(enc_outputs[:-1])):
-            cur = self.upsample(cur)
-            cur = torch.cat([cur, enc_output], dim=1)
-            cur = dec(cur)
-
-        return self.final(cur)
-
 def init_weights(m):
     if isinstance(m, Conv):
         m.initialize()
-
-def compute_luminance(color):
-    return color[:, 0, ...] * 0.299 + color[:, 1, ...] * 0.587 + color[:, 2, ...]  * 0.114
 
 def compute_exposure(img):
     log_mean = torch.log1p(compute_luminance(img)).view(img.shape[0], -1).mean(dim=1)
@@ -156,13 +119,6 @@ class DenoiserModel(nn.Module):
         #self.filter_func = self.albedo_prediction
         #self.kernel_size = 21
         #self.filter_func = self.mitchell_netravali
-
-        #self.encoder = DenoiserEncoder([[48, 48], [48], [48], [48], [48], [48]],
-        #                               [num_input_channels, 48, 48, 48, 48, 48])
-
-        #self.decoder = DenoiserDecoder([[96, 96], [96, 96], [96, 96], [96, 96], [64, 32]],
-        #                               [48+48, 96+48, 96+48, 96+48, 96+48],
-        #                               num_output_channels)
 
         self.mixstart = nn.Sequential(nn.Conv2d(in_channels=num_input_channels,
                                                 out_channels=16,
@@ -200,25 +156,35 @@ class DenoiserModel(nn.Module):
                                       out_channels=128,
                                       stride=2)
 
-        self.dec_block5 = JitNetBlock(in_channels=128,
-                                      out_channels=128,
-                                      upsample=2)
+        self.dec_block5 = nn.Sequential(JitNetBlock(in_channels=128,
+                                                    out_channels=128),
+                                        JitNetBlock(in_channels=128,
+                                                    out_channels=128,
+                                                    upsample=2))
 
-        self.dec_block4 = JitNetBlock(in_channels=128,
-                                      out_channels=64,
-                                      upsample=2)
+        self.dec_block4 = nn.Sequential(JitNetBlock(in_channels=128+64,
+                                                    out_channels=64),
+                                        JitNetBlock(in_channels=64,
+                                                    out_channels=64,
+                                                    upsample=2))
 
-        self.dec_block3 = JitNetBlock(in_channels=64,
-                                      out_channels=64,
-                                      upsample=2)
+        self.dec_block3 = nn.Sequential(JitNetBlock(in_channels=64+64,
+                                                    out_channels=64),
+                                        JitNetBlock(in_channels=64,
+                                                    out_channels=64,
+                                                    upsample=2))
 
-        self.dec_block2 = JitNetBlock(in_channels=64,
-                                      out_channels=32,
-                                      upsample=2)
+        self.dec_block2 = nn.Sequential(JitNetBlock(in_channels=64+32,
+                                                    out_channels=32),
+                                        JitNetBlock(in_channels=32,
+                                                    out_channels=32,
+                                                    upsample=2))
 
-        self.dec_block1 = JitNetBlock(in_channels=32,
-                                      out_channels=32,
-                                      upsample=2)
+        self.dec_block1 = nn.Sequential(JitNetBlock(in_channels=32+16,
+                                                    out_channels=32),
+                                        JitNetBlock(in_channels=32,
+                                                    out_channels=32,
+                                                    upsample=2))
 
         self.final = nn.Sequential(nn.Conv2d(in_channels=32, out_channels=32,
                                              kernel_size=(1, 1)),
@@ -263,13 +229,14 @@ class DenoiserModel(nn.Module):
         enc4_out = self.enc_block4(enc3_out)
         enc5_out = self.enc_block5(enc4_out)
         out = self.dec_block5(enc5_out)
-        out = torch.cat([out[:, 0:64, ...] + enc4_out, out[:, 64:, ...]], dim=1)
+        #out = torch.cat([out[:, 0:64, ...] + enc4_out, out[:, 64:, ...]], dim=1)
+        out = torch.cat([out, enc4_out], dim=1)
         out = self.dec_block4(out)
-        out = out + enc3_out
+        out = torch.cat([out, enc3_out], dim=1)
         out = self.dec_block3(out)
-        out = torch.cat([out[:, 0:32, ...] + enc2_out, out[:, 32:, ...]], dim=1)
+        out = torch.cat([out, enc2_out], dim=1)
         out = self.dec_block2(out)
-        out = torch.cat([out[:, 0:16, ...] + enc1_out, out[:, 16:, ...]], dim=1)
+        out = torch.cat([out, enc1_out], dim=1)
         out = self.dec_block1(out)
 
         out = torch.cat([out[:, 0:16, ...] + mixed, out[:, 16:, ...]], dim=1)
@@ -346,7 +313,24 @@ class DenoiserModel(nn.Module):
 
         return out
 
-    def dynamic_filters(self, color, weights):
+    def dynamic_filters(self, color, albedo, weights):
+        width, height = color.shape[-1], color.shape[-2]
+
+        dense_weights = F.softmax(weights[:, 0:31, ...], dim=1)
+        padding = kernel_size // 2
+        padded = F.pad(color, (padding, padding, padding, padding))
+
+        shifted = []
+        for i in range(kernel_size):
+            for j in range(kernel_size):
+                shifted.append(padded[:, :, i:i + height, j:j + width])
+
+        img_stack = torch.stack(shifted, dim=1)
+        dense_output = torch.sum(dense_weights.unsqueeze(dim=2) * img_stack, dim=1).squeeze(dim=1)
+
+        return dense_output
+
+    def dynamic_filters_sep_first(self, color, albedo, weights):
         width, height = color.shape[-1], color.shape[-2]
 
         separable_x_weights = F.softmax(weights[:, 9:20, ...], dim=1)

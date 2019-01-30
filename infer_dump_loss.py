@@ -5,7 +5,7 @@ import torchvision
 from dataset import ExrDataset
 from state import StateManager
 from arg_handler import parse_infer_args
-from model import TemporalDenoiserModel
+from modified_model import TemporalDenoiserModel
 from vanilla_model import TemporalVanillaDenoiserModel
 from utils import tonemap
 from data_loading import pad_data, save_exr, load_exr
