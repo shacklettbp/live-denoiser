@@ -32,7 +32,7 @@ class Loss:
 
         return d_x, d_y
     
-    def compute(self, out, ref, input, e_irradiance):
+    def compute(self, out, ref, input, albedo, e_irradiance):
         #noise2noise_loss = (out - ref)**2/(out.detach()**2 + 0.01)
         noise2noise_loss = 0
 
@@ -41,5 +41,5 @@ class Loss:
         #d_x, d_y = self.compute_spatial_reg(e_irradiance)
     
         #loss = noise2noise_loss.mean()# + 1e-4 * lum_loss.mean() + 1e-3 * (d_x.mean() + d_y.mean())
-        loss = torch.abs((out - ref)).mean()
+        loss = (((e_irradiance - (ref / (albedo + 0.001)))**2)/(e_irradiance.detach()**2 + 0.01)).mean()
         return loss, noise2noise_loss

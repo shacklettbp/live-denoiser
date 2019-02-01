@@ -61,7 +61,7 @@ def train_epoch(model, optimizer, scheduler, dataloader):
 
         optimizer.zero_grad()
         outputs, e_irradiances = model(color, normal, albedo)
-        loss, _ = loss_gen.compute(outputs, ref, color, e_irradiances)
+        loss, _ = loss_gen.compute(outputs, ref, color, albedo, e_irradiances)
         loss.backward()
 
         #torch.nn.utils.clip_grad_norm_(model.parameters(), 1e-3)
@@ -76,7 +76,7 @@ def train_epoch(model, optimizer, scheduler, dataloader):
         num_val_batches += 1
         with torch.no_grad():
             out, ei = model(color, normal, albedo)
-            loss, _ = loss_gen.compute(out, ref, color, ei)
+            loss, _ = loss_gen.compute(out, ref, color, albedo, ei)
             total_val_loss += loss.cpu()
     
     print("Val loss: {}".format(total_val_loss / num_val_batches))

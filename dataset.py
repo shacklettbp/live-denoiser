@@ -119,7 +119,7 @@ class NumpyRawDataset(torch.utils.data.Dataset):
         return self.augment(color_tensor, reference_tensor, normal_tensor, albedo_tensor)
 
 class PreProcessedDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_path, augment=True):
+    def __init__(self, dataset_path, augment=True, num_imgs=None):
         dataset_path = os.path.expanduser(dataset_path)
 
         with open(os.path.join(dataset_path, 'metadata.json')) as f:
@@ -131,7 +131,11 @@ class PreProcessedDataset(torch.utils.data.Dataset):
         self.fullshape = (3, size[1], size[0])
         files = metadata['files']
 
-        for crop_files in files:
+        if num_imgs is None:
+            num_imgs = len(files)
+
+        for file_idx in range(num_imgs):
+            crop_files = files[file_idx]
             for temporal_files in crop_files:
                 for imgs in temporal_files:
                     for i, fname in enumerate(imgs):
@@ -141,6 +145,7 @@ class PreProcessedDataset(torch.utils.data.Dataset):
 
         self.need_pad = size[0] % 32 != 0 or size[1] % 32 != 0
         self.perform_augmentations = augment
+        self.perform_augmentations = False
 
     def __len__(self):
         return len(self.files)

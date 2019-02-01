@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from utils import tonemap
 
-num_input_channels = 3
+num_input_channels = 9
 
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels, relu=True, leaky=True):
@@ -114,7 +114,7 @@ class VanillaDenoiserModel(nn.Module):
 
         full_input = torch.cat([mapped_color, normal, mapped_albedo], dim=1)
 
-        enc_outs = self.encoder(color)
+        enc_outs = self.encoder(full_input)
 
         output = self.decoder(enc_outs)
         
