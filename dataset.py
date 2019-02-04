@@ -21,25 +21,33 @@ def get_files(dir, extension, num_imgs=None, one_idx=False):
         files.append((os.path.join(dir, "hdr_{}.{}".format(i, extension)),
                       os.path.join(dir, "normal_{}.{}".format(i, extension)),
                       os.path.join(dir, "albedo_{}.{}".format(i, extension)),
-                      os.path.join(dir, "alt_hdr_{}.{}".format(i, extension))))
+                      os.path.join(dir, "alt_hdr_{}.{}".format(i, extension)),
+                      os.path.join(dir, "direct_{}.{}".format(i, extension)),
+                      os.path.join(dir, "indirect_{}.{}".format(i, extension)),
+                      os.path.join(dir, "shadowt_{}.{}".format(i, extension))))
 
     return files
 
-def augment_data(color, normal, albedo, ref):
+def augment_data(color, normal, albedo, ref, direct, indirect, tshadow):
     assert(ref is not None)
     if random.random() < 0.5:
         color = color.flip(-1)
         normal = normal.flip(-1)
         albedo = albedo.flip(-1)
         ref = ref.flip(-1)
+        direct = direct.flip(-1)
+        indirect = indirect.flip(-1)
+        tshadow = tshadow.flip(-1)
 
     color_indices = np.random.permutation(3)
 
     color = color[:, color_indices, ...]
     albedo = albedo[:, color_indices, ...]
     ref = ref[:, color_indices, ...]
+    direct = direct[:, color_indices, ...]
+    indirect = indirect[:, color_indices, ...]
 
-    return [ color, normal, albedo, ref ]
+    return [ color, normal, albedo, ref, direct, indirect, tshadow ]
 
 class ExrDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_path, training=True, num_imgs=None, cropsize=None):
@@ -51,12 +59,15 @@ class ExrDataset(torch.utils.data.Dataset):
         return len(self.files)
 
     def __getitem__(self, idx):
-        hdr_filename, normal_filename, albedo_filename, ref_hdr_filename = self.files[idx]
+        hdr_filename, normal_filename, albedo_filename, ref_hdr_filename, direct_filename, indirect_filename, tshadow_filename = self.files[idx]
 
         color = load_exr(hdr_filename)
         normal = load_exr(normal_filename)
         albedo = load_exr(albedo_filename)
         reference = load_exr(ref_hdr_filename) if self.training else None
+        direct = load_exr(direct_filename)
+        indirect = load_exr(indirect_filename)
+        tshadow = load_exr(tshadow_filename)
 
         _, height, width = color.shape
 
@@ -87,7 +98,7 @@ class ExrDataset(torch.utils.data.Dataset):
         if self.training:
             return augment_data(color, normal, albedo, reference)
         else:
-            return [ color, normal, albedo ]
+            return [ color, normal, albedo, direct, indirect, tshadow ]
 
 # FIXME out of date
 class NumpyRawDataset(torch.utils.data.Dataset):
@@ -145,7 +156,7 @@ class PreProcessedDataset(torch.utils.data.Dataset):
 
         self.need_pad = size[0] % 32 != 0 or size[1] % 32 != 0
         self.perform_augmentations = augment
-        self.perform_augmentations = False
+        #self.perform_augmentations = False
 
     def __len__(self):
         return len(self.files)
@@ -160,19 +171,30 @@ class PreProcessedDataset(torch.utils.data.Dataset):
         normal = [load_raw(f[1], self.fullshape) for f in filenames]
         albedo = [load_raw(f[2], self.fullshape) for f in filenames]
         reference = [load_raw(f[3], self.fullshape) for f in filenames]
+        direct = [load_raw(f[4], self.fullshape) for f in filenames]
+        indirect = [load_raw(f[5], self.fullshape) for f in filenames]
+        tshadow = [load_raw(f[6], self.fullshape) for f in filenames]
 
-        color_tensor = torch.stack(color)
-        normal_tensor = torch.stack(normal)
-        albedo_tensor = torch.stack(albedo)
-        reference_tensor = torch.stack(reference)
+        color = torch.stack(color)
+        normal = torch.stack(normal)
+        albedo = torch.stack(albedo)
+        reference = torch.stack(reference)
+        direct = torch.stack(direct)
+        indirect = torch.stack(indirect)
+        tshadow = torch.stack(tshadow)
+        tshadow[torch.isnan(tshadow)] = 0
+        tshadow[torch.isinf(tshadow)] = 0
 
         if self.need_pad:
-            color_tensor = pad_data(color_tensor)
-            normal_tensor = pad_data(normal_tensor)
-            albedo_tensor = pad_data(albedo_tensor)
-            reference_tensor = pad_data(reference_tensor)
+            color = pad_data(color)
+            normal = pad_data(normal)
+            albedo = pad_data(albedo)
+            reference = pad_data(reference)
+            direct = pad_data(direct)
+            indirect = pad_data(indirect)
+            tshadow = pad_data(tshadow)
 
         if self.perform_augmentations:
-            return augment_data(color_tensor, normal_tensor, albedo_tensor, reference_tensor)
+            return augment_data(color, normal, albedo, reference, direct, indirect, tshadow)
         else:
-            return [color_tensor, normal_tensor, albedo_tensor, reference_tensor]
+            return [color, normal, albedo, reference, direct, indirect, tshadow]

@@ -24,16 +24,17 @@ dataset = ExrDataset(dataset_path=args.inputs,
                      num_imgs=args.num_imgs)
 
 for i in range(args.start_frame, len(dataset)):
-    color, normal, albedo = dataset[i]
-    color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
-    color, normal, albedo = pad_data(color), pad_data(normal), pad_data(albedo)
-    color, normal, albedo = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0)
+    color, normal, albedo, direct, indirect, tshadow = dataset[i]
+    color, normal, albedo, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
+    color, normal, albedo, direct, indirect, tshadow = pad_data(color), pad_data(normal), pad_data(albedo), pad_data(direct), pad_data(indirect), pad_data(tshadow)
+    color, normal, albedo, direct, indirect, tshadow = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0), direct.unsqueeze(dim=0), indirect.unsqueeze(dim=0), tshadow.unsqueeze(dim=0)
 
     color_prev1 = torch.zeros_like(color)
     color_prev2 = torch.zeros_like(color)
 
     with torch.no_grad():
         output, e_irradiance = model(color.unsqueeze(dim=1), normal.unsqueeze(dim=1), albedo.unsqueeze(dim=1),
+                                     direct.unsqueeze(dim=1), indirect.unsqueeze(dim=1), tshadow.unsqueeze(dim=1),
                                       color_prev1=color_prev1, color_prev2=color_prev2)
 
         output = output[..., 0:args.img_height, 0:args.img_width]
