@@ -40,6 +40,9 @@ def load_exr(filename):
 
     tensor = torch.tensor(array).float()
 
+    tensor[torch.isnan(tensor)] = 0
+    tensor[torch.isinf(tensor)] = 0
+
     return tensor
 
 def load_raw_crop(filename, offset_x, offset_y, cropsize, fullshape):
