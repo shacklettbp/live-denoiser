@@ -6,6 +6,7 @@ def common_args(parser):
     parser.add_argument('--gpu', type=int, default=0)
     parser.add_argument('--vanilla-net', default=False, action='store_true')
     parser.add_argument('--disable-recurrence', action='store_true', default=False)
+    parser.add_argument('--lr', type=float, default=0.0003)
 
 def parse_train_args():
     parser = argparse.ArgumentParser()
@@ -13,7 +14,6 @@ def parse_train_args():
 
     parser.add_argument('--batch-size', type=int, default=4)
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--lr', type=float, default=0.0003)
     parser.add_argument('--training-set', type=str, required=True)
     parser.add_argument('--reference-set', type=str, default=None)
     parser.add_argument('--validation-set', type=str, required=True)
