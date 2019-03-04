@@ -3,6 +3,7 @@ import os
 import subprocess
 import torch.utils.cpp_extension as cpp_extension
 import sys
+from trainlive import make_model, train_and_eval
 
 sys.stdout = open("CONOUT$", 'w')
 sys.stderr = open("CONOUT$", 'w')
@@ -30,18 +31,20 @@ falcor_bindings = cpp_extension.load(name='falcor_bindings', sources=[get_cpp_pa
 
 subprocess.run = orig_subprocess_run
 
-def denoiser_train_and_eval(inputs, output):
+def denoiser_train_and_eval(model, inputs, output):
+    color, ref_color, normal, albedo = inputs
     #output[..., 0].copy_(inputs[0][..., 0])
     #output.copy_(inputs[0])
     #output[..., 0] = inputs[0][..., 0]
-    output[...] = inputs[2]
+    output.copy_(normal)
 
 def denoiser_entry(input_ready, output_ready, inputs, output, buffer_sizes):
     inputs, output = falcor_bindings.bind_buffers(inputs, output, buffer_sizes)
+    model = make_model()
     while True:
         input_ready.acquire()
 
-        denoiser_train_and_eval(inputs, output)
+        denoiser_train_and_eval(model, inputs, output)
 
         torch.cuda.synchronize()
 
