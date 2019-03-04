@@ -30,7 +30,9 @@ falcor_bindings = cpp_extension.load(name='falcor_bindings', sources=[get_cpp_pa
 subprocess.run = orig_subprocess_run
 
 def denoiser_train_and_eval(inputs, output):
-    output[..., 0].copy_(inputs[0][..., 0])
+    #output[..., 0].copy_(inputs[0][..., 0])
+    #output.copy_(inputs[0])
+    output[..., 0] = inputs[0][..., 0]
 
 def denoiser_entry(input_ready, output_ready, inputs, output, buffer_sizes):
     inputs, output = falcor_bindings.bind_buffers(inputs, output, buffer_sizes)
