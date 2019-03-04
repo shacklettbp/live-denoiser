@@ -1,4 +1,24 @@
 import torch
+import torch.nn.functional as F
+
+def roundup(num, mul):
+    rounded = (num // mul)
+    if num % mul != 0:
+        rounded += 1
+
+    return rounded * mul
+
+def pad_data(tensor, mul=32):
+    height, width = tensor.shape[-2:]
+
+    rounded_height = roundup(height, mul)
+    rounded_width = roundup(width, mul)
+
+    height_pad = rounded_height - height
+    width_pad = rounded_width - width
+    pad = (0, width_pad, 0, height_pad)
+
+    return F.pad(tensor, pad, 'constant', 0)
 
 def calc_luminance(color):
     if len(color.shape) == 4:

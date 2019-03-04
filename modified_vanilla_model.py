@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from utils import tonemap
 
-num_input_channels = 16
+num_input_channels = 9
 
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels, relu=True, leaky=True):
@@ -105,19 +105,14 @@ class VanillaDenoiserModel(nn.Module):
             self.apply(init_weights)
 
 
-    def forward(self, color, normal, albedo, direct, indirect, tshadow):
+    def forward(self, color, normal, albedo):
         eps = 0.001
         color = color / (albedo + eps)
 
-        direct = direct / (albedo + eps)
-
         mapped_color = torch.log1p(color)
         mapped_albedo = torch.log1p(albedo)
-        mapped_direct = torch.log1p(direct)
-        mapped_indirect = torch.log1p(indirect)
-        tshadow = tshadow[:, 0:1, ...].clamp(0, 1000) / 1000
 
-        full_input = torch.cat([mapped_color, normal, mapped_albedo, mapped_direct, mapped_indirect, tshadow], dim=1)
+        full_input = torch.cat([mapped_color, normal, mapped_albedo], dim=1)
 
         enc_outs = self.encoder(full_input)
 
@@ -132,18 +127,15 @@ class TemporalVanillaDenoiserModel(nn.Module):
         super(TemporalVanillaDenoiserModel, self).__init__()
         self.model = VanillaDenoiserModel(*args, **kwargs)
 
-    def forward(self, color, normal, albedo, direct, indirect, tshadow, color_prev1=None, color_prev2=None, albedo_prev1=None, albedo_prev2=None):
+    def forward(self, color, normal, albedo):
         color = color.transpose(0, 1)
         normal = normal.transpose(0, 1)
         albedo = albedo.transpose(0, 1)
-        direct = direct.transpose(0, 1)
-        indirect = indirect.transpose(0, 1)
-        tshadow = tshadow.transpose(0, 1)
 
         all_outputs = []
         ei_outputs = []
         for i in range(color.shape[0]):
-            output, ei = self.model(color[i], normal[i], albedo[i], direct[i], indirect[i], tshadow[i])
+            output, ei = self.model(color[i], normal[i], albedo[i])
             all_outputs.append(output)
             ei_outputs.append(ei)
 

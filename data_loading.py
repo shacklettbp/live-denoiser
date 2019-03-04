@@ -1,29 +1,9 @@
 import torch
-import torchvision
 import OpenEXR
 import Imath
 import numpy as np
 import torch.nn.functional as F
-from utils import tonemap
-
-def roundup(num, mul):
-    rounded = (num // mul)
-    if num % mul != 0:
-        rounded += 1
-
-    return rounded * mul
-
-def pad_data(tensor, mul=32):
-    height, width = tensor.shape[-2:]
-
-    rounded_height = roundup(height, mul)
-    rounded_width = roundup(width, mul)
-
-    height_pad = rounded_height - height
-    width_pad = rounded_width - width
-    pad = (0, width_pad, 0, height_pad)
-
-    return F.pad(tensor, pad, 'constant', 0)
+from utils import tonemap, pad_data
 
 def load_exr(filename):
     floattype = Imath.PixelType(Imath.PixelType.HALF)
@@ -73,5 +53,6 @@ def save_exr(tensor, filename):
     out.writePixels({'R' : R, 'G': G, 'B': B })
 
 def save_png(tensor, filename):
+    import torchvision
     img = torchvision.transforms.ToPILImage()(tonemap(tensor).clamp(0, 1.0).cpu())
     img.save(filename)
