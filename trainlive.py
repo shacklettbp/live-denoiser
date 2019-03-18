@@ -13,11 +13,9 @@ import random
 from itertools import chain, product
 from filters import simple_filter, bilateral_filter
 
-prefilter_color = simple_filter
-
 def prefilter_color(*args, **kwargs):
-    #return simple_filter(*args, **kwargs, factor=64)
-    return bilateral_filter(*args, **kwargs)
+    return simple_filter(*args, **kwargs, factor=64)
+    #return bilateral_filter(*args, **kwargs)
 
 def augment(color, normal, albedo, ref):
     return color, normal, albedo, ref
