@@ -5,12 +5,19 @@ from torch.optim.lr_scheduler import LambdaLR
 import numpy as np
 from modified_model import TemporalDenoiserModel
 from modified_vanilla_model import TemporalVanillaDenoiserModel
-from utils import pad_data
+from utils import pad_data, rgb, ycocg
 from loss import Loss
 from cyclic import CyclicLR
 import os
 import random
 from itertools import chain, product
+from filters import simple_filter, bilateral_filter
+
+prefilter_color = simple_filter
+
+def prefilter_color(*args, **kwargs):
+    #return simple_filter(*args, **kwargs, factor=64)
+    return bilateral_filter(*args, **kwargs)
 
 def augment(color, normal, albedo, ref):
     return color, normal, albedo, ref
@@ -21,35 +28,6 @@ def augment(color, normal, albedo, ref):
     ref = ref[:, color_indices, ...]
 
     return color, normal, albedo, ref
-
-def ycocg(tensor):
-    return tensor
-    r = tensor[:, 0, ...]
-    g = tensor[:, 1, ...]
-    b = tensor[:, 2, ...]
-
-    y = r / 4 + g / 2 + b / 4
-    co = r / 2 - b / 2
-    cg = -r / 4 + g / 2 - b / 4
-
-    assert((y >= 0).all())
-    assert((co >= 0).all())
-    assert((cg >= 0).all())
-
-    return torch.stack([y, co, cg], dim=1)
-
-def rgb(tensor):
-    return tensor
-
-    y = tensor[:, 0, ...]
-    co = tensor[:, 1, ...]
-    cg = tensor[:, 2, ...]
-
-    r = y + co - cg
-    g = y + cg
-    b = y - co - cg
-
-    return torch.stack([r, g, b], dim=1)
 
 class Args:
     def __init__(self, **kwargs):
@@ -96,13 +74,10 @@ def train(state, color, normal, albedo, ref):
         albedo_train = torch.cat(albedo_train)
         ref_train = torch.cat(ref_train)
 
-
-        color_train = ycocg(color_train)
-        albedo_train = ycocg(albedo_train)
-        ref_train = ycocg(ref_train)
+        prefiltered_train = prefilter_color(color_train, normal_train)
 
         for i in range(state.args.inner_train_iters):
-            output, e_irradiance = state.model(color_train.unsqueeze(dim=1), normal_train.unsqueeze(dim=1), albedo_train.unsqueeze(dim=1))
+            output, e_irradiance = state.model(color_train.unsqueeze(dim=1), normal_train.unsqueeze(dim=1), albedo_train.unsqueeze(dim=1), prefiltered_train.unsqueeze(dim=1))
             output = output.squeeze(dim=1)
             e_irradiance = e_irradiance.squeeze(dim=1)
 
@@ -115,10 +90,13 @@ def train(state, color, normal, albedo, ref):
     #state.scheduler.step()
     state.frame_num += 1
 
+def create_model(dev):
+    return TemporalVanillaDenoiserModel(init=True).to(dev)
+
 def init_training_state():
-    args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=16, cropsize=256)
+    args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=32, cropsize=128)
     dev = torch.device('cuda:{}'.format(0))
-    model = TemporalVanillaDenoiserModel(init=True).to(dev)
+    model = create_model(dev)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))
     loss_gen = Loss(dev)
 
@@ -144,6 +122,7 @@ def init_training_state():
 def train_and_eval(training_state, color, ref_color, normal, albedo):
     assert((color != ref_color).any())
     orig_color = color 
+    orig_normal = normal
 
     color = color[..., 480:960+480]
     ref_color = ref_color[..., 480:960+480]
@@ -157,10 +136,15 @@ def train_and_eval(training_state, color, ref_color, normal, albedo):
     color_pad, normal_pad, albedo_pad = pad_data(color), pad_data(normal), pad_data(albedo)
 
     with torch.no_grad():
-        output, e_irradiance = training_state.model(ycocg(color_pad).unsqueeze(dim=1), normal_pad.unsqueeze(dim=1), ycocg(albedo_pad).unsqueeze(dim=1))
-        output = rgb(output.squeeze(dim=1))
+        prefiltered_color = prefilter_color(color_pad, normal_pad)
+        output, e_irradiance = training_state.model(color_pad.unsqueeze(dim=1), normal_pad.unsqueeze(dim=1), albedo_pad.unsqueeze(dim=1), prefiltered_color.unsqueeze(dim=1))
+        output = output.squeeze(dim=1)
         output = output[..., 0:height, 0:width]
 
-    output = torch.cat([orig_color[..., 0:480], output, orig_color[..., 960+480:1920]], dim=-1)
+        right = orig_color[..., 960+480:1920]
+        right_normal = orig_normal[..., 960+480:1920]
+        filtered_right = prefilter_color(pad_data(right, mul=64), pad_data(right_normal, mul=64))[:, :, 0:right.shape[2], 0:right.shape[3]]
+
+        output = torch.cat([orig_color[..., 0:480], output, filtered_right], dim=-1)
 
     return output

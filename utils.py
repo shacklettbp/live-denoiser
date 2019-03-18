@@ -20,6 +20,31 @@ def pad_data(tensor, mul=32):
 
     return F.pad(tensor, pad, 'constant', 0)
 
+def ycocg(tensor):
+    return tensor
+    r = tensor[:, 0, ...]
+    g = tensor[:, 1, ...]
+    b = tensor[:, 2, ...]
+
+    y = r / 4 + g / 2 + b / 4
+    co = r / 2 - b / 2
+    cg = -r / 4 + g / 2 - b / 4
+
+    return torch.stack([y, co, cg], dim=1)
+
+def rgb(tensor):
+    return tensor
+
+    y = tensor[:, 0, ...]
+    co = tensor[:, 1, ...]
+    cg = tensor[:, 2, ...]
+
+    r = y + co - cg
+    g = y + cg
+    b = y - co - cg
+
+    return torch.stack([r, g, b], dim=1)
+
 def calc_luminance(color):
     if len(color.shape) == 4:
         r = color[:, 0:1, ...]

@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils import tonemap
+from utils import tonemap, ycocg, rgb
 
-num_input_channels = 9
+num_input_channels = 12 
+num_output_channels = 3
+kernel_size = 3
 
 class Conv(nn.Module):
     def __init__(self, in_channels, out_channels, relu=True, leaky=True):
@@ -92,7 +94,6 @@ def init_weights(m):
 class VanillaDenoiserModel(nn.Module):
     def __init__(self, init):
         super(VanillaDenoiserModel, self).__init__()
-        num_output_channels = 3
 
         self.encoder = DenoiserEncoder([[48, 48], [48], [48], [48], [48], [48]],
                                        [num_input_channels, 48, 48, 48, 48, 48])
@@ -104,20 +105,52 @@ class VanillaDenoiserModel(nn.Module):
         if init:
             self.apply(init_weights)
 
+    def dynamic_filters(self, color, manually_denoised, weights):
+        width, height = color.shape[-1], color.shape[-2]
 
-    def forward(self, color, normal, albedo):
+        #dense_weights = F.softmax(weights[:, 0:31, ...], dim=1)
+        dense_weights = F.softmax(weights[:, 0:kernel_size*kernel_size*2, ...], dim=1)
+        padding = kernel_size // 2
+        padded_color = F.pad(color, (padding, padding, padding, padding))
+        padded_manually_denoised = F.pad(manually_denoised, (padding, padding, padding, padding))
+
+        shifted = []
+        for i in range(kernel_size):
+            for j in range(kernel_size):
+                shifted.append(padded_color[:, :, i:i + height, j:j + width])
+
+        for i in range(kernel_size):
+            for j in range(kernel_size):
+                shifted.append(padded_manually_denoised[:, :, i:i + height, j:j + width])
+
+        img_stack = torch.stack(shifted, dim=1)
+        dense_output = torch.sum(dense_weights.unsqueeze(dim=2) * img_stack, dim=1).squeeze(dim=1)
+
+        return dense_output
+
+    def forward(self, color, normal, albedo, prefiltered):
         eps = 0.001
         color = color / (albedo + eps)
 
+        downsample_factor = 64
+
+        small_height = color.shape[2] // downsample_factor
+        small_width = color.shape[3] // downsample_factor
         mapped_color = torch.log1p(color)
         mapped_albedo = torch.log1p(albedo)
+        mapped_prefiltered = torch.log1p(prefiltered)
 
-        full_input = torch.cat([mapped_color, normal, mapped_albedo], dim=1)
+        #mapped_color = ycocg(mapped_color)
+        #mapped_albedo = ycocg(mapped_albedo)
+
+        full_input = torch.cat([mapped_color, normal, mapped_albedo, mapped_prefiltered], dim=1)
 
         enc_outs = self.encoder(full_input)
 
         output = self.decoder(enc_outs)
-        
+
+        #output = rgb(output)
+
         exp = torch.expm1(output)
 
         return exp * (albedo + eps), exp 
@@ -127,15 +160,16 @@ class TemporalVanillaDenoiserModel(nn.Module):
         super(TemporalVanillaDenoiserModel, self).__init__()
         self.model = VanillaDenoiserModel(*args, **kwargs)
 
-    def forward(self, color, normal, albedo):
+    def forward(self, color, normal, albedo, prefiltered):
         color = color.transpose(0, 1)
         normal = normal.transpose(0, 1)
         albedo = albedo.transpose(0, 1)
+        prefiltered = prefiltered.transpose(0, 1)
 
         all_outputs = []
         ei_outputs = []
         for i in range(color.shape[0]):
-            output, ei = self.model(color[i], normal[i], albedo[i])
+            output, ei = self.model(color[i], normal[i], albedo[i], prefiltered[i])
             all_outputs.append(output)
             ei_outputs.append(ei)
 
