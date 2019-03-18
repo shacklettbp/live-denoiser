@@ -12,6 +12,7 @@ import os
 import random
 from itertools import chain, product
 from filters import simple_filter, bilateral_filter
+import sys
 
 def prefilter_color(*args, **kwargs):
     return simple_filter(*args, **kwargs, factor=64)
@@ -89,31 +90,68 @@ def train(state, color, normal, albedo, ref):
     state.frame_num += 1
 
 def create_model(dev):
-    #return TemporalVanillaDenoiserModel(init=True).to(dev)
+    return TemporalVanillaDenoiserModel(init=True).to(dev)
+
+    class ModelImpl(nn.Module):
+        def __init__(self):
+            super(ModelImpl, self).__init__()
+
+            self.start = nn.Sequential(
+                    nn.Conv2d(in_channels=9, out_channels=32, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU())
+
+            self.enc = nn.Sequential(
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU())
+
+
+            self.dec = nn.Sequential(
+                    nn.Conv2d(in_channels=64, out_channels=32, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU())
+
+            self.final = nn.Conv2d(in_channels=32, out_channels=3, kernel_size=1, stride=1, padding=0)
+
+        def forward(self, full_input):
+            full_input = full_input[:, 0:9, ...]
+            normal = full_input[:, 3:6, ...]
+
+            start = self.start(full_input)
+
+            enc1_out = self.enc(start)
+            out = F.avg_pool2d(enc1_out, kernel_size=2, stride=2)
+
+            enc2_out = self.enc(out)
+            out = F.avg_pool2d(enc2_out, kernel_size=2, stride=2)
+
+            enc3_out = self.enc(out)
+            out = F.avg_pool2d(enc3_out, kernel_size=2, stride=2)
+
+            enc4_out = self.enc(out)
+            out = enc4_out
+
+            out = F.interpolate(out, scale_factor=2, mode='bilinear')
+            #out = self.dec(torch.cat([out, F.interpolate(start, scale_factor=1/4, mode='bilinear')], dim=1))
+            out = self.dec(torch.cat([out, enc3_out], dim=1))
+
+            out = F.interpolate(out, scale_factor=2, mode='bilinear')
+            #out = self.dec(torch.cat([out, F.interpolate(start, scale_factor=1/2, mode='bilinear')], dim=1))
+            out = self.dec(torch.cat([out, enc2_out], dim=1))
+
+            out = F.interpolate(out, scale_factor=2, mode='bilinear')
+            #out = self.dec(torch.cat([out, start], dim=1))
+            out = self.dec(torch.cat([out, enc1_out], dim=1))
+
+            return self.final(out)
 
     class Model(nn.Module):
         def __init__(self):
             super(Model, self).__init__()
-            self.model = nn.Sequential(
-                    nn.Conv2d(in_channels=12, out_channels=32, kernel_size=3, stride=1, padding=1),
-                    nn.ReLU(),
-                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-                    nn.ReLU(),
-                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(65, 1), stride=1, padding=(32, 0)),
-                    nn.ReLU(),
-                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(1, 65), stride=1, padding=(0, 32)),
-                    nn.ReLU(),
-                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(33, 1), stride=1, padding=(16, 0)),
-                    nn.ReLU(),
-                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(1, 33), stride=1, padding=(0, 16)),
-                    nn.ReLU(),
-                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(17, 1), stride=1, padding=(8, 0)),
-                    nn.ReLU(),
-                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(1, 17), stride=1, padding=(0, 8)),
-                    nn.ReLU(),
-                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-                    nn.ReLU(),
-                    nn.Conv2d(in_channels=32, out_channels=3, kernel_size=3, stride=1, padding=1))
+
+            self.model = ModelImpl()
 
         def forward(self, color, normal, albedo, prefiltered):
             color = color.squeeze(dim=1)
@@ -151,6 +189,7 @@ def init_training_state():
     args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=32, cropsize=128)
     dev = torch.device('cuda:{}'.format(0))
     model = create_model(dev)
+    model.load_state_dict(torch.load(os.path.join(os.path.dirname(__file__), "weights_1000.pth"), map_location='cpu'))
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))
     loss_gen = Loss(dev)
 
