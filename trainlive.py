@@ -72,7 +72,7 @@ def train(state, color, normal, albedo, ref):
         albedo_train = torch.cat(albedo_train)
         ref_train = torch.cat(ref_train)
 
-        prefiltered_train = prefilter_color(color_train, normal_train)
+        prefiltered_train = prefilter_color(color_train)
 
         for i in range(state.args.inner_train_iters):
             output, e_irradiance = state.model(color_train.unsqueeze(dim=1), normal_train.unsqueeze(dim=1), albedo_train.unsqueeze(dim=1), prefiltered_train.unsqueeze(dim=1))
@@ -89,7 +89,63 @@ def train(state, color, normal, albedo, ref):
     state.frame_num += 1
 
 def create_model(dev):
-    return TemporalVanillaDenoiserModel(init=True).to(dev)
+    #return TemporalVanillaDenoiserModel(init=True).to(dev)
+
+    class Model(nn.Module):
+        def __init__(self):
+            super(Model, self).__init__()
+            self.model = nn.Sequential(
+                    nn.Conv2d(in_channels=12, out_channels=32, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(65, 1), stride=1, padding=(32, 0)),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(1, 65), stride=1, padding=(0, 32)),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(33, 1), stride=1, padding=(16, 0)),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(1, 33), stride=1, padding=(0, 16)),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(17, 1), stride=1, padding=(8, 0)),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=(1, 17), stride=1, padding=(0, 8)),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
+                    nn.ReLU(),
+                    nn.Conv2d(in_channels=32, out_channels=3, kernel_size=3, stride=1, padding=1))
+
+        def forward(self, color, normal, albedo, prefiltered):
+            color = color.squeeze(dim=1)
+            normal = normal.squeeze(dim=1)
+            albedo = albedo.squeeze(dim=1)
+            prefiltered = prefiltered.squeeze(dim=1)
+
+            eps = 0.001
+            color = color / (albedo + eps)
+
+            mapped_color = torch.log1p(color)
+            mapped_albedo = torch.log1p(albedo)
+            mapped_prefiltered = torch.log1p(prefiltered)
+
+            full_input = torch.cat([mapped_color, normal, mapped_albedo, mapped_prefiltered], dim=1)
+
+            out = self.model(full_input)
+
+            exp = torch.expm1(out)
+
+            return exp * (albedo + eps), exp
+
+    model = Model()
+    def init_weights(m):
+        if isinstance(m, nn.Conv2d):
+            nn.init.xavier_normal_(m.weight.data)
+
+    model.apply(init_weights)
+
+    model = model.to(dev)
+
+    return model
 
 def init_training_state():
     args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=32, cropsize=128)
@@ -134,14 +190,14 @@ def train_and_eval(training_state, color, ref_color, normal, albedo):
     color_pad, normal_pad, albedo_pad = pad_data(color), pad_data(normal), pad_data(albedo)
 
     with torch.no_grad():
-        prefiltered_color = prefilter_color(color_pad, normal_pad)
+        prefiltered_color = prefilter_color(color_pad)
         output, e_irradiance = training_state.model(color_pad.unsqueeze(dim=1), normal_pad.unsqueeze(dim=1), albedo_pad.unsqueeze(dim=1), prefiltered_color.unsqueeze(dim=1))
         output = output.squeeze(dim=1)
         output = output[..., 0:height, 0:width]
 
         right = orig_color[..., 960+480:1920]
         right_normal = orig_normal[..., 960+480:1920]
-        filtered_right = prefilter_color(pad_data(right, mul=64), pad_data(right_normal, mul=64))[:, :, 0:right.shape[2], 0:right.shape[3]]
+        filtered_right = prefilter_color(pad_data(right, mul=64))[:, :, 0:right.shape[2], 0:right.shape[3]]
 
         output = torch.cat([orig_color[..., 0:480], output, filtered_right], dim=-1)
 

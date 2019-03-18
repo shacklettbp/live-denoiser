@@ -132,10 +132,6 @@ class VanillaDenoiserModel(nn.Module):
         eps = 0.001
         color = color / (albedo + eps)
 
-        downsample_factor = 64
-
-        small_height = color.shape[2] // downsample_factor
-        small_width = color.shape[3] // downsample_factor
         mapped_color = torch.log1p(color)
         mapped_albedo = torch.log1p(albedo)
         mapped_prefiltered = torch.log1p(prefiltered)
