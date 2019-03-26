@@ -189,7 +189,7 @@ def init_training_state():
     args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=32, cropsize=128)
     dev = torch.device('cuda:{}'.format(0))
     model = create_model(dev)
-    model.load_state_dict(torch.load(os.path.join(os.path.dirname(__file__), "weights_1000.pth"), map_location='cpu'))
+    #model.load_state_dict(torch.load(os.path.join(os.path.dirname(__file__), "weights_1000.pth"), map_location='cpu'))
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))
     loss_gen = Loss(dev)
 
