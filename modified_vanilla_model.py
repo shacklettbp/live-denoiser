@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from utils import tonemap, ycocg, rgb
 
-num_input_channels = 12 
+num_input_channels = 9
 num_output_channels = 3
 kernel_size = 3
 
@@ -134,12 +134,11 @@ class VanillaDenoiserModel(nn.Module):
 
         mapped_color = torch.log1p(color)
         mapped_albedo = torch.log1p(albedo)
-        mapped_prefiltered = torch.log1p(prefiltered)
 
         #mapped_color = ycocg(mapped_color)
         #mapped_albedo = ycocg(mapped_albedo)
 
-        full_input = torch.cat([mapped_color, normal, mapped_albedo, mapped_prefiltered], dim=1)
+        full_input = torch.cat([mapped_color, normal, mapped_albedo], dim=1)
 
         enc_outs = self.encoder(full_input)
 

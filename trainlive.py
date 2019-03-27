@@ -39,6 +39,7 @@ class TrainingState:
         self.scheduler = scheduler
         self.loss_gen = loss_gen
         self.frame_num = 0
+        self.prev_crops = ()
         self.args = args
 
 def train(state, color, normal, albedo, ref):
@@ -72,6 +73,19 @@ def train(state, color, normal, albedo, ref):
         normal_train = torch.cat(normal_train)
         albedo_train = torch.cat(albedo_train)
         ref_train = torch.cat(ref_train)
+
+        is_prev = len(state.prev_crops) == 4
+
+        if is_prev:
+            color_train_prev, normal_train_prev, albedo_train_prev, ref_train_prev = state.prev_crops
+
+        state.prev_crops = (color_train, normal_train, albedo_train, ref_train)
+
+        if is_prev:
+            color_train = torch.cat([color_train, color_train_prev])
+            normal_train = torch.cat([normal_train, normal_train_prev])
+            albedo_train = torch.cat([albedo_train, albedo_train_prev])
+            ref_train = torch.cat([ref_train, ref_train_prev])
 
         prefiltered_train = prefilter_color(color_train)
 
