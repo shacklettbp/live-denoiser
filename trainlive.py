@@ -102,19 +102,21 @@ def train(state, color, normal, albedo, ref):
 
         idxs = list(product(list(chain(range(0, 960, state.args.cropsize)[:-1], [960 - state.args.cropsize])), list(chain(range(0, 1080, state.args.cropsize)[:-1], [1080 - state.args.cropsize]))))
 
-        scored_idxs = [] 
-        for x, y in idxs:
-            irradiance_crop = state.prev_irradiance[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
+        if state.args.importance_sample:
+            scored_idxs = [] 
+            for x, y in idxs:
+                irradiance_crop = state.prev_irradiance[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
 
-            x_delta = (irradiance_crop[..., 0:state.args.cropsize - 1] - irradiance_crop[..., 1:state.args.cropsize]).abs().mean()
-            y_delta = (irradiance_crop[..., 0:state.args.cropsize - 1, :] - irradiance_crop[..., 1:state.args.cropsize, :]).abs().mean()
+                x_delta = (irradiance_crop[..., 0:state.args.cropsize - 1] - irradiance_crop[..., 1:state.args.cropsize]).abs().mean()
+                y_delta = (irradiance_crop[..., 0:state.args.cropsize - 1, :] - irradiance_crop[..., 1:state.args.cropsize, :]).abs().mean()
 
-            score = x_delta + y_delta
-            scored_idxs.append((score, x, y))
+                score = x_delta + y_delta
+                scored_idxs.append((score, x, y))
 
-        selected_idxs = [(x, y) for s, x, y in sorted(scored_idxs, reverse=True, key=lambda x: x[0])[0:state.args.num_crops*2]]
-        selected_idxs = random.sample(selected_idxs, state.args.num_crops)
-        #selected_idxs = random.sample(idxs, state.args.num_crops)
+            selected_idxs = [(x, y) for s, x, y in sorted(scored_idxs, reverse=True, key=lambda x: x[0])[0:state.args.num_crops*2]]
+            selected_idxs = random.sample(selected_idxs, state.args.num_crops)
+        else:
+            selected_idxs = random.sample(idxs, state.args.num_crops)
 
         color_train = []
         normal_train = []
@@ -152,7 +154,8 @@ def train(state, color, normal, albedo, ref):
         state.prev_crops = (color_train[save_indices], normal_train[save_indices], albedo_train[save_indices], ref_train[save_indices])
 
 
-        color_train, normal_train, albedo_train, ref_train = augment(color_train, normal_train, albedo_train, ref_train)
+        if state.args.augment:
+            color_train, normal_train, albedo_train, ref_train = augment(color_train, normal_train, albedo_train, ref_train)
 
 
         prefiltered_train = prefilter_color(color_train)
@@ -268,7 +271,7 @@ def create_model(dev):
     return model
 
 def init_training_state():
-    args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=16, cropsize=128)
+    args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=16, cropsize=128, augment=False, importance_sample=False)
     dev = torch.device('cuda:{}'.format(0))
     model = create_model(dev)
     #model.load_state_dict(torch.load(os.path.join(os.path.dirname(__file__), "weights_1000.pth"), map_location='cpu'))
