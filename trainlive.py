@@ -14,8 +14,9 @@ from itertools import chain, product
 from filters import simple_filter, bilateral_filter
 import sys
 
-def prefilter_color(*args, **kwargs):
-    return simple_filter(*args, **kwargs, factor=64)
+def prefilter_color(color, albedo):
+    color = color / (albedo + 0.001)
+    return simple_filter(color, factor=64)
     #return bilateral_filter(*args, **kwargs)
 
 def rgb_to_hsv(color):
@@ -158,7 +159,7 @@ def train(state, color, normal, albedo, ref):
             color_train, normal_train, albedo_train, ref_train = augment(color_train, normal_train, albedo_train, ref_train)
 
 
-        prefiltered_train = prefilter_color(color_train)
+        prefiltered_train = prefilter_color(color_train, albedo_train)
 
         for i in range(state.args.inner_train_iters):
             output, e_irradiance = state.model(color_train.unsqueeze(dim=1), normal_train.unsqueeze(dim=1), albedo_train.unsqueeze(dim=1), prefiltered_train.unsqueeze(dim=1))
@@ -274,7 +275,7 @@ def init_training_state():
     args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=16, cropsize=128, augment=False, importance_sample=False)
     dev = torch.device('cuda:{}'.format(0))
     model = create_model(dev)
-    #model.load_state_dict(torch.load(os.path.join(os.path.dirname(__file__), "weights_1000.pth"), map_location='cpu'))
+    model.load_state_dict(torch.load(os.path.join(os.path.dirname(__file__), "weights_1000.pth"), map_location='cpu'))
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))
     loss_gen = Loss(dev)
 
@@ -300,6 +301,7 @@ def init_training_state():
 def train_and_eval(training_state, color, ref_color, normal, albedo):
     orig_color = color 
     orig_normal = normal
+    orig_albedo = albedo
 
     color = color[..., 480:960+480]
     ref_color = ref_color[..., 480:960+480]
@@ -316,14 +318,15 @@ def train_and_eval(training_state, color, ref_color, normal, albedo):
     color_pad, normal_pad, albedo_pad = pad_data(color), pad_data(normal), pad_data(albedo)
 
     with torch.no_grad():
-        prefiltered_color = prefilter_color(color_pad)
+        prefiltered_color = prefilter_color(color_pad, albedo_pad)
         output, e_irradiance = training_state.model(color_pad.unsqueeze(dim=1), normal_pad.unsqueeze(dim=1), albedo_pad.unsqueeze(dim=1), prefiltered_color.unsqueeze(dim=1))
         output = output.squeeze(dim=1)
         output = output[..., 0:height, 0:width]
 
         right = orig_color[..., 960+480:1920]
         right_normal = orig_normal[..., 960+480:1920]
-        filtered_right = prefilter_color(pad_data(right, mul=64))[:, :, 0:right.shape[2], 0:right.shape[3]]
+        right_albedo = orig_albedo[..., 960+480:1920]
+        filtered_right = prefilter_color(pad_data(right, mul=64), pad_data(right_albedo, mul=64))[:, :, 0:right.shape[2], 0:right.shape[3]] * (right_albedo + 0.001)
 
         output = torch.cat([orig_color[..., 0:480], output, filtered_right], dim=-1)
 
