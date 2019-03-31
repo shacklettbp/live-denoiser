@@ -18,13 +18,65 @@ def prefilter_color(*args, **kwargs):
     return simple_filter(*args, **kwargs, factor=64)
     #return bilateral_filter(*args, **kwargs)
 
-def augment(color, normal, albedo, ref):
-    return color, normal, albedo, ref
-    color_indices = np.random.permutation(3)
+def rgb_to_hsv(color):
+    r = color[:, 0:1, ...]
+    g = color[:, 1:2, ...]
+    b = color[:, 2:3, ...]
 
-    color = color[:, color_indices, ...]
-    albedo = albedo[:, color_indices, ...]
-    ref = ref[:, color_indices, ...]
+    c_max = torch.max(color, dim=1, keepdim=True)[0]
+    c_min = torch.min(color, dim=1, keepdim=True)[0]
+
+    d = c_max - c_min
+    v = c_max
+    s = torch.where(c_max > 0, d / c_max, torch.zeros_like(d))
+
+    h = torch.where(r == c_max, g - b, torch.where(g == c_max, 2 + b - r, 4 + r - g))
+    h = torch.where(d > 0, h / d * 60, torch.zeros_like(h)) % 360
+
+    return torch.cat([h, s, v], dim=1)
+
+def hsv_to_rgb(color):
+    h = color[:, 0:1, ...]
+    s = color[:, 1:2, ...]
+    v = color[:, 2:3, ...]
+
+    h = h / 60
+    c = v * s
+    x = c * (1 - (h % 2 - 1).abs())
+    m = v - c
+    z = torch.zeros_like(c)
+
+    rgb = torch.where(h <= 1, torch.cat([c, x, z], dim=1),
+            torch.where(h <= 2, torch.cat([x, c, z], dim=1),
+              torch.where(h <= 3, torch.cat([z, c, x], dim=1),
+                torch.where(h <= 4, torch.cat([z, x, c], dim=1),
+                  torch.where(h <= 5, torch.cat([x, z, c], dim=1),
+                    torch.cat([c, z, x], dim=1))))))
+
+    rgb = rgb + m
+
+    return rgb
+
+def augment(color, normal, albedo, ref):
+    if random.random() < 0.5:
+        color = color.flip(-1)
+        normal = normal.flip(-1)
+        albedo = albedo.flip(-1)
+        ref = ref.flip(-1)
+
+    hsv_input = rgb_to_hsv(color)
+    hsv_ref = rgb_to_hsv(ref)
+    hsv_albedo = rgb_to_hsv(albedo)
+
+    hue_shift = random.random() * 360
+
+    hsv_input = torch.cat([(hsv_input[:, 0:1, ...] + hue_shift) % 360, hsv_input[:, 1:3, ...]], dim=1)
+    hsv_ref = torch.cat([(hsv_ref[:, 0:1, ...] + hue_shift) % 360, hsv_ref[:, 1:3, ...]], dim=1)
+    hsv_albedo = torch.cat([(hsv_albedo[:, 0:1, ...] + hue_shift) % 360, hsv_albedo[:, 1:3, ...]], dim=1)
+
+    color = hsv_to_rgb(hsv_input)
+    ref = hsv_to_rgb(hsv_ref)
+    albedo = hsv_to_rgb(hsv_albedo)
 
     return color, normal, albedo, ref
 
@@ -40,6 +92,7 @@ class TrainingState:
         self.loss_gen = loss_gen
         self.frame_num = 0
         self.prev_crops = ()
+        self.prev_irradiance = None
         self.args = args
 
 def train(state, color, normal, albedo, ref):
@@ -49,20 +102,30 @@ def train(state, color, normal, albedo, ref):
 
         idxs = list(product(list(chain(range(0, 960, state.args.cropsize)[:-1], [960 - state.args.cropsize])), list(chain(range(0, 1080, state.args.cropsize)[:-1], [1080 - state.args.cropsize]))))
 
-        rand_idxs = random.sample(idxs, state.args.num_crops)
+        scored_idxs = [] 
+        for x, y in idxs:
+            irradiance_crop = state.prev_irradiance[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
+
+            x_delta = (irradiance_crop[..., 0:state.args.cropsize - 1] - irradiance_crop[..., 1:state.args.cropsize]).abs().mean()
+            y_delta = (irradiance_crop[..., 0:state.args.cropsize - 1, :] - irradiance_crop[..., 1:state.args.cropsize, :]).abs().mean()
+
+            score = x_delta + y_delta
+            scored_idxs.append((score, x, y))
+
+        selected_idxs = [(x, y) for s, x, y in sorted(scored_idxs, reverse=True, key=lambda x: x[0])[0:state.args.num_crops*2]]
+        selected_idxs = random.sample(selected_idxs, state.args.num_crops)
+        #selected_idxs = random.sample(idxs, state.args.num_crops)
 
         color_train = []
         normal_train = []
         albedo_train = []
         ref_train = []
 
-        for x, y in rand_idxs:
+        for x, y in selected_idxs:
             color_crop = color[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
             normal_crop = normal[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
             albedo_crop = albedo[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
             ref_crop = ref[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
-
-            color_crop, normal_crop, albedo_crop, ref_crop = augment(color_crop, normal_crop, albedo_crop, ref_crop)
 
             color_train.append(color_crop)
             normal_train.append(normal_crop)
@@ -74,18 +137,23 @@ def train(state, color, normal, albedo, ref):
         albedo_train = torch.cat(albedo_train)
         ref_train = torch.cat(ref_train)
 
-        is_prev = len(state.prev_crops) == 4
-
-        if is_prev:
+        if len(state.prev_crops) == 4:
             color_train_prev, normal_train_prev, albedo_train_prev, ref_train_prev = state.prev_crops
 
-        state.prev_crops = (color_train, normal_train, albedo_train, ref_train)
-
-        if is_prev:
             color_train = torch.cat([color_train, color_train_prev])
             normal_train = torch.cat([normal_train, normal_train_prev])
             albedo_train = torch.cat([albedo_train, albedo_train_prev])
             ref_train = torch.cat([ref_train, ref_train_prev])
+            save_indices = np.random.permutation(state.args.num_crops * 2)
+        else:
+            save_indices = np.random.permutation(state.args.num_crops)
+
+            
+        state.prev_crops = (color_train[save_indices], normal_train[save_indices], albedo_train[save_indices], ref_train[save_indices])
+
+
+        color_train, normal_train, albedo_train, ref_train = augment(color_train, normal_train, albedo_train, ref_train)
+
 
         prefiltered_train = prefilter_color(color_train)
 
@@ -200,7 +268,7 @@ def create_model(dev):
     return model
 
 def init_training_state():
-    args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=32, cropsize=128)
+    args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=16, cropsize=128)
     dev = torch.device('cuda:{}'.format(0))
     model = create_model(dev)
     #model.load_state_dict(torch.load(os.path.join(os.path.dirname(__file__), "weights_1000.pth"), map_location='cpu'))
@@ -227,7 +295,6 @@ def init_training_state():
     return TrainingState(model, optimizer, scheduler, loss_gen, args)
 
 def train_and_eval(training_state, color, ref_color, normal, albedo):
-    assert((color != ref_color).any())
     orig_color = color 
     orig_normal = normal
 
@@ -235,6 +302,9 @@ def train_and_eval(training_state, color, ref_color, normal, albedo):
     ref_color = ref_color[..., 480:960+480]
     normal = normal[..., 480:960+480]
     albedo = albedo[..., 480:960+480]
+
+    if training_state.prev_irradiance is None:
+        training_state.prev_irradiance = color
 
     train(training_state, color, normal, albedo, ref_color)
     
@@ -253,5 +323,7 @@ def train_and_eval(training_state, color, ref_color, normal, albedo):
         filtered_right = prefilter_color(pad_data(right, mul=64))[:, :, 0:right.shape[2], 0:right.shape[3]]
 
         output = torch.cat([orig_color[..., 0:480], output, filtered_right], dim=-1)
+
+    training_state.prev_irradiance = e_irradiance
 
     return output
