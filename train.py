@@ -12,6 +12,7 @@ from state import StateManager
 from loss import Loss
 from utils import iter_with_device
 from cyclic import CyclicLR
+from filters import simple_filter
 
 args = parse_train_args()
 
@@ -59,8 +60,10 @@ def train_epoch(model, optimizer, scheduler, dataloader):
         scheduler.batch_step()
         color, normal, albedo, ref, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
 
+        prefiltered = simple_filter(color.squeeze(dim=1) / (albedo.squeeze(dim=1) + 0.001), factor=64).unsqueeze(dim=1)
+
         optimizer.zero_grad()
-        outputs, e_irradiances = model(color, normal, albedo, direct, indirect, tshadow)
+        outputs, e_irradiances = model(color, normal, albedo, prefiltered)
         loss, _ = loss_gen.compute(outputs, ref, color, albedo, e_irradiances)
         loss.backward()
 
@@ -76,7 +79,9 @@ def train_epoch(model, optimizer, scheduler, dataloader):
 
         num_val_batches += 1
         with torch.no_grad():
-            out, ei = model(color, normal, albedo, direct, indirect, tshadow)
+            prefiltered = simple_filter(color.squeeze(dim=1) / (albedo.squeeze(dim=1) + 0.001), factor=64).unsqueeze(dim=1)
+
+            out, ei = model(color, normal, albedo, prefiltered)
             loss, _ = loss_gen.compute(out, ref, color, albedo, ei)
             total_val_loss += loss.cpu()
     

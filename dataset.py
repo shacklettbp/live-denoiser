@@ -157,7 +157,7 @@ class PreProcessedDataset(torch.utils.data.Dataset):
 
         self.need_pad = size[0] % 32 != 0 or size[1] % 32 != 0
         self.perform_augmentations = augment
-        #self.perform_augmentations = False
+        self.perform_augmentations = False
 
     def __len__(self):
         return len(self.files)
