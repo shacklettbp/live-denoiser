@@ -272,7 +272,7 @@ def create_model(dev):
     return model
 
 def init_training_state():
-    args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=16, cropsize=128, augment=False, importance_sample=False)
+    args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=8, cropsize=128, augment=False, importance_sample=False)
     dev = torch.device('cuda:{}'.format(0))
     model = create_model(dev)
     model.load_state_dict(torch.load(os.path.join(os.path.dirname(__file__), "weights_1000.pth"), map_location='cpu'))
@@ -299,6 +299,9 @@ def init_training_state():
     return TrainingState(model, optimizer, scheduler, loss_gen, args)
 
 def train_and_eval(training_state, color, ref_color, normal, albedo):
+    color[torch.isnan(color)] = 0
+    ref_color[torch.isnan(ref_color)] = 0
+
     orig_color = color 
     orig_normal = normal
     orig_albedo = albedo
