@@ -19,6 +19,7 @@ def parse_train_args():
     parser.add_argument('--validation-set', type=str, required=True)
     parser.add_argument('--num-pairs', type=int, default=None)
     parser.add_argument('--restore', type=str, default=None)
+    parser.add_argument('--name', type=str, default='run')
 
     return parser.parse_args()
 

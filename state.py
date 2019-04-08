@@ -33,7 +33,7 @@ class StateManager:
     def __init__(self, args, model, optimizer, device):
         if args.restore is None:
             timestr = datetime.now().strftime('%H-%M-%S-%m-%d-%Y')
-            self.weights_dir = os.path.join('weights', timestr)
+            self.weights_dir = os.path.join('weights', args.name + '-' + timestr)
             path = pathlib.Path(self.weights_dir).mkdir(parents=True, exist_ok=True)
 
             self.start_epoch = 0

@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from utils import tonemap, ycocg, rgb
+from filters import simple_filter
 
-num_input_channels = 12
+num_input_channels = 18
 num_output_channels = 3
 kernel_size = 3
 
@@ -128,18 +129,22 @@ class VanillaDenoiserModel(nn.Module):
 
         return dense_output
 
-    def forward(self, color, normal, albedo, prefiltered):
+    def forward(self, color, normal, albedo, prev1, prev2):
         eps = 0.001
         color = color / (albedo + eps)
+
+        prefiltered = simple_filter(color, factor=64)
 
         mapped_color = torch.log1p(color)
         mapped_albedo = torch.log1p(albedo)
         mapped_prefiltered = torch.log1p(prefiltered)
+        mapped_prev1 = torch.log1p(prev1)
+        mapped_prev2 = torch.log1p(prev2)
 
         #mapped_color = ycocg(mapped_color)
         #mapped_albedo = ycocg(mapped_albedo)
 
-        full_input = torch.cat([mapped_color, normal, mapped_albedo, mapped_prefiltered], dim=1)
+        full_input = torch.cat([mapped_color, normal, mapped_albedo, mapped_prefiltered, mapped_prev1, mapped_prev2], dim=1)
 
         enc_outs = self.encoder(full_input)
 
@@ -156,17 +161,31 @@ class TemporalVanillaDenoiserModel(nn.Module):
         super(TemporalVanillaDenoiserModel, self).__init__()
         self.model = VanillaDenoiserModel(*args, **kwargs)
 
-    def forward(self, color, normal, albedo, prefiltered):
+    def forward(self, color, normal, albedo):
         color = color.transpose(0, 1)
         normal = normal.transpose(0, 1)
         albedo = albedo.transpose(0, 1)
-        prefiltered = prefiltered.transpose(0, 1)
 
         all_outputs = []
         ei_outputs = []
+
+        prev1 = torch.zeros_like(color[0]);
+        prev2 = torch.zeros_like(prev1);
+
         for i in range(color.shape[0]):
-            output, ei = self.model(color[i], normal[i], albedo[i], prefiltered[i])
+            output, ei = self.model(color[i], normal[i], albedo[i], prev1, prev2)
             all_outputs.append(output)
             ei_outputs.append(ei)
 
+            prev2 = prev1
+            prev1 = ei
+
         return torch.stack(all_outputs, dim=1), torch.stack(ei_outputs, dim=1)
+
+class VanillaDenoiserModelWrapper(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super(VanillaDenoiserModelWrapper, self).__init__()
+        self.model = VanillaDenoiserModel(*args, **kwargs)
+
+    def forward(self, *args, **kwargs):
+        return self.model(*args, **kwargs)

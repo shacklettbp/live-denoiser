@@ -97,7 +97,6 @@ class ExrDataset(torch.utils.data.Dataset):
 
         if self.training:
             return [ color, normal, albedo, reference, direct, indirect, tshadow ]
-            return augment_data(color, normal, albedo, reference)
         else:
             return [ color, normal, albedo, direct, indirect, tshadow ]
 

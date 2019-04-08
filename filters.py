@@ -4,13 +4,13 @@ import torch.nn.functional as F
 import math
 
 def simple_filter(color, factor):
-    small_height = color.shape[2] // factor
-    small_width = color.shape[3] // factor
+    small_height = color.shape[-2] // factor
+    small_width = color.shape[-1] // factor
 
-    small_color = torch.zeros(*color.shape[0:2], small_height, small_width, dtype=color.dtype, device=color.device)
+    small_color = torch.zeros(*color.shape[0:-2], small_height, small_width, dtype=color.dtype, device=color.device)
     for y in range(0, small_height):
         for x in range(0, small_width):
-            small_color[..., y, x] = color[..., y*factor:y*factor+factor, x*factor:x*factor+factor].mean(dim=[2, 3])
+            small_color[..., y, x] = color[..., y*factor:y*factor+factor, x*factor:x*factor+factor].mean(dim=[-2, -1])
 
     blurred_color = F.interpolate(small_color, scale_factor=factor, mode='bilinear')
 

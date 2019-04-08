@@ -60,14 +60,12 @@ def train_epoch(model, optimizer, scheduler, dataloader):
         scheduler.batch_step()
         color, normal, albedo, ref, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
 
-        prefiltered = simple_filter(color.squeeze(dim=1) / (albedo.squeeze(dim=1) + 0.001), factor=64).unsqueeze(dim=1)
-
         optimizer.zero_grad()
-        outputs, e_irradiances = model(color, normal, albedo, prefiltered)
+        outputs, e_irradiances = model(color, normal, albedo)
         loss, _ = loss_gen.compute(outputs, ref, color, albedo, e_irradiances)
         loss.backward()
 
-        #torch.nn.utils.clip_grad_norm_(model.parameters(), 1e-3)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1e-3)
 
         optimizer.step()
 
@@ -79,9 +77,7 @@ def train_epoch(model, optimizer, scheduler, dataloader):
 
         num_val_batches += 1
         with torch.no_grad():
-            prefiltered = simple_filter(color.squeeze(dim=1) / (albedo.squeeze(dim=1) + 0.001), factor=64).unsqueeze(dim=1)
-
-            out, ei = model(color, normal, albedo, prefiltered)
+            out, ei = model(color, normal, albedo)
             loss, _ = loss_gen.compute(out, ref, color, albedo, ei)
             total_val_loss += loss.cpu()
     
