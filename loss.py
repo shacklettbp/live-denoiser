@@ -32,7 +32,9 @@ class Loss:
 
         return d_x, d_y
     
-    def compute(self, out, ref, input, albedo, e_irradiance):
+    def compute(self, ref_e_irradiance, e_irradiance):
+        assert(len(e_irradiance.shape) == 5) # We need the temporal component
+
         #noise2noise_loss = (out - ref)**2/(out.detach()**2 + 0.01)
         noise2noise_loss = 0
 
@@ -41,5 +43,10 @@ class Loss:
         #d_x, d_y = self.compute_spatial_reg(e_irradiance)
     
         #loss = noise2noise_loss.mean()# + 1e-4 * lum_loss.mean() + 1e-3 * (d_x.mean() + d_y.mean())
-        loss = (((e_irradiance - (ref / (albedo + 0.001)))**2)/(e_irradiance.detach()**2 + 0.01)).mean()
+        irradiance_loss = (((e_irradiance - ref_e_irradiance)**2)/(e_irradiance.detach()**2 + 0.01)).mean()
+
+        temporal_loss = (((e_irradiance[:, 0:2, ...] - e_irradiance[:, 1:3, ...]) - (ref_e_irradiance[:, 0:2, ...] - ref_e_irradiance[:, 1:3, ...]))**2).mean()
+        
+        loss = irradiance_loss + 1e-3 * temporal_loss
+
         return loss, noise2noise_loss

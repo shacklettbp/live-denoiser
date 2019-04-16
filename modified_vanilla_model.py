@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from utils import tonemap, ycocg, rgb
 from filters import simple_filter
 
-num_input_channels = 18
+num_input_channels = 17
 num_output_channels = 3
 kernel_size = 3
 

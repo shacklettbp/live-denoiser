@@ -56,13 +56,15 @@ val_dataloader = DataLoader(val_dataset, batch_size=1, num_workers=2,
 def train_epoch(model, optimizer, scheduler, dataloader):
     #scheduler.step()
     model.train()
-    for color, normal, albedo, ref, direct, indirect, tshadow in iter_with_device(dataloader, args.gpu):
+    for color, normal, albedo, ref in iter_with_device(dataloader, args.gpu):
         scheduler.batch_step()
-        color, normal, albedo, ref, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
+        #color, normal, albedo, ref, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
+        color, normal, albedo, ref = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev)
 
         optimizer.zero_grad()
         outputs, e_irradiances = model(color, normal, albedo)
-        loss, _ = loss_gen.compute(outputs, ref, color, albedo, e_irradiances)
+        ref_e_irradiance = ref / (albedo + 0.001)
+        loss, _ = loss_gen.compute(ref_e_irradiance, e_irradiances)
         loss.backward()
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1e-3)
@@ -72,13 +74,15 @@ def train_epoch(model, optimizer, scheduler, dataloader):
     model.eval()
     total_val_loss = 0
     num_val_batches = 0
-    for color, normal, albedo, ref, direct, indirect, tshadow in iter_with_device(val_dataloader, args.gpu):
-        color, normal, albedo, ref, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
+    for color, normal, albedo, ref in iter_with_device(val_dataloader, args.gpu):
+        #color, normal, albedo, ref, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
+        color, normal, albedo, ref = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev)
 
         num_val_batches += 1
         with torch.no_grad():
-            out, ei = model(color, normal, albedo)
-            loss, _ = loss_gen.compute(out, ref, color, albedo, ei)
+            outputs, e_irradiances = model(color, normal, albedo)
+            ref_e_irradiance = ref / (albedo + 0.001)
+            loss, _ = loss_gen.compute(ref_e_irradiance,  e_irradiances)
             total_val_loss += loss.cpu()
     
     print("Val loss: {}".format(total_val_loss / num_val_batches))

@@ -62,12 +62,12 @@ class ExrDataset(torch.utils.data.Dataset):
         hdr_filename, normal_filename, albedo_filename, ref_hdr_filename, direct_filename, indirect_filename, tshadow_filename = self.files[idx]
 
         color = load_exr(hdr_filename)
-        normal = load_exr(normal_filename)
+        normal = load_exr(normal_filename)[0:2, ...]
         albedo = load_exr(albedo_filename)
         reference = load_exr(ref_hdr_filename) if self.training else None
-        direct = load_exr(direct_filename)
-        indirect = load_exr(indirect_filename)
-        tshadow = load_exr(tshadow_filename)
+        #direct = load_exr(direct_filename)
+        #indirect = load_exr(indirect_filename)
+        #tshadow = load_exr(tshadow_filename)
 
         _, height, width = color.shape
 
@@ -96,9 +96,9 @@ class ExrDataset(torch.utils.data.Dataset):
                                       col_idx:col_idx+self.cropsize[1]]
 
         if self.training:
-            return [ color, normal, albedo, reference, direct, indirect, tshadow ]
+            return [ color, normal, albedo, reference ]#, direct, indirect, tshadow ]
         else:
-            return [ color, normal, albedo, direct, indirect, tshadow ]
+            return [ color, normal, albedo]#, direct, indirect, tshadow ]
 
 # FIXME out of date
 class NumpyRawDataset(torch.utils.data.Dataset):
@@ -152,7 +152,7 @@ class PreProcessedDataset(torch.utils.data.Dataset):
                     for i, fname in enumerate(imgs):
                         imgs[i] = os.path.join(dataset_path, fname)
 
-        self.files = files
+        self.files = files[0:num_imgs]
 
         self.need_pad = size[0] % 32 != 0 or size[1] % 32 != 0
         self.perform_augmentations = augment
@@ -168,33 +168,37 @@ class PreProcessedDataset(torch.utils.data.Dataset):
         filenames = random.choice(crops)
 
         color = [load_raw(f[0], self.fullshape) for f in filenames]
-        normal = [load_raw(f[1], self.fullshape) for f in filenames]
+        normal = [load_raw(f[1], (2, *self.fullshape[1:])) for f in filenames]
         albedo = [load_raw(f[2], self.fullshape) for f in filenames]
         reference = [load_raw(f[3], self.fullshape) for f in filenames]
-        direct = [load_raw(f[4], self.fullshape) for f in filenames]
-        indirect = [load_raw(f[5], self.fullshape) for f in filenames]
-        tshadow = [load_raw(f[6], self.fullshape) for f in filenames]
+        #direct = [load_raw(f[4], self.fullshape) for f in filenames]
+        #indirect = [load_raw(f[5], self.fullshape) for f in filenames]
+        #tshadow = [load_raw(f[6], self.fullshape) for f in filenames]
 
         color = torch.stack(color)
         normal = torch.stack(normal)
         albedo = torch.stack(albedo)
         reference = torch.stack(reference)
-        direct = torch.stack(direct)
-        indirect = torch.stack(indirect)
-        tshadow = torch.stack(tshadow)
-        tshadow[torch.isnan(tshadow)] = 0
-        tshadow[torch.isinf(tshadow)] = 0
+        #direct = torch.stack(direct)
+        #indirect = torch.stack(indirect)
+        #tshadow = torch.stack(tshadow)
+        #tshadow[torch.isnan(tshadow)] = 0
+        #tshadow[torch.isinf(tshadow)] = 0
 
         if self.need_pad:
             color = pad_data(color)
             normal = pad_data(normal)
             albedo = pad_data(albedo)
             reference = pad_data(reference)
-            direct = pad_data(direct)
-            indirect = pad_data(indirect)
-            tshadow = pad_data(tshadow)
+            #direct = pad_data(direct)
+            #indirect = pad_data(indirect)
+            #tshadow = pad_data(tshadow)
+
+        direct = None
+        indirect = None
+        tshadow = None
 
         if self.perform_augmentations:
             return augment_data(color, normal, albedo, reference, direct, indirect, tshadow)
         else:
-            return [color, normal, albedo, reference, direct, indirect, tshadow]
+            return [color, normal, albedo, reference]#, direct, indirect, tshadow]
