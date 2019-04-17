@@ -261,8 +261,8 @@ def train_and_eval(training_state, color, ref_color, normal, albedo, crop=True):
         training_state.prev_irradiance2 = training_state.prev_irradiance1
         training_state.prev_irradiance1 = e_irradiance
 
-        training_state.prev_irradiance2 = training_state.prev_ref_irradiance1
-        training_state.prev_irradiance1 = ref_e_irradiance
+        training_state.prev_ref_irradiance2 = training_state.prev_ref_irradiance1
+        training_state.prev_ref_irradiance1 = ref_e_irradiance
 
         output = output[..., 0:height, 0:width]
 
