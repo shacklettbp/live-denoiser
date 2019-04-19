@@ -12,7 +12,7 @@ import os
 import random
 from itertools import chain, product
 from filters import simple_filter, bilateral_filter
-from smallmodel import SmallModel
+from smallmodel import SmallModel, KernelModel
 import sys
 
 def prefilter_color(color, albedo):
@@ -193,11 +193,11 @@ def train(state, color, normal, albedo, ref_irradiance):
     print(float(loss.cpu()) / state.args.outer_train_iters)
 
 def create_model(args, dev, weights):
-    #model = SmallModel().to(dev)
-    model = VanillaDenoiserModelWrapper(init=True).to(dev)
+    model = KernelModel().to(dev)
+    #model = VanillaDenoiserModelWrapper(init=True).to(dev)
 
-    if weights is not None:
-        model.load_state_dict(torch.load(weights, map_location='cpu'))
+    #if weights is not None:
+    #    model.load_state_dict(torch.load(weights, map_location='cpu'))
 
     return model
 

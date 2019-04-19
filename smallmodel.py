@@ -135,10 +135,14 @@ class SmallModel(nn.Module):
 
 class KernelModelImpl(nn.Module):
     def __init__(self):
-        super(ModelImpl, self).__init__()
+        super(KernelModelImpl, self).__init__()
+
+        self.kernel_size = 3
+        self.imgs_to_filter = 3
+        self.kernel_total_weights = self.kernel_size*self.kernel_size*self.imgs_to_filter
 
         self.start = nn.Sequential(
-                nn.Conv2d(in_channels=9, out_channels=32, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=11, out_channels=32, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
         self.enc1 = nn.Sequential(
@@ -148,25 +152,25 @@ class KernelModelImpl(nn.Module):
                 nn.ReLU())
 
         self.enc2 = nn.Sequential(
-                nn.Conv2d(in_channels=48, out_channels=48, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=32, out_channels=48, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=48, out_channels=48, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
         self.enc3 = nn.Sequential(
-                nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=48, out_channels=64, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
         self.enc4 = nn.Sequential(
-                nn.Conv2d(in_channels=96, out_channels=96, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=64, out_channels=96, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=96, out_channels=96, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
         self.enc5 = nn.Sequential(
-                nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=96, out_channels=128, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
@@ -174,34 +178,34 @@ class KernelModelImpl(nn.Module):
         self.dec5 = nn.Sequential(
                 nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=128, out_channels=96, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
-        self.kernel5 = nn.Conv2d(in_channels=128, out_channels=25, kernel_size=3, stride=1, padding=1)
+        self.kernel5 = nn.Conv2d(in_channels=96, out_channels=self.kernel_total_weights, kernel_size=3, stride=1, padding=1)
 
         self.dec4 = nn.Sequential(
                 nn.Conv2d(in_channels=96+96, out_channels=96, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(in_channels=96, out_channels=96, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=96, out_channels=64, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
-        self.kernel4 = nn.Conv2d(in_channels=96, out_channels=25, kernel_size=3, stride=1, padding=1)
+        self.kernel4 = nn.Conv2d(in_channels=64, out_channels=self.kernel_total_weights, kernel_size=3, stride=1, padding=1)
 
         self.dec3 = nn.Sequential(
                 nn.Conv2d(in_channels=64+64, out_channels=64, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=64, out_channels=48, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
-        self.kernel3 = nn.Conv2d(in_channels=64, out_channels=25, kernel_size=3, stride=1, padding=1)
+        self.kernel3 = nn.Conv2d(in_channels=48, out_channels=self.kernel_total_weights, kernel_size=3, stride=1, padding=1)
 
         self.dec2 = nn.Sequential(
                 nn.Conv2d(in_channels=48+48, out_channels=48, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
-                nn.Conv2d(in_channels=48, out_channels=48, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=48, out_channels=32, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
-        self.kernel2 = nn.Conv2d(in_channels=48, out_channels=25, kernel_size=3, stride=1, padding=1)
+        self.kernel2 = nn.Conv2d(in_channels=32, out_channels=self.kernel_total_weights, kernel_size=3, stride=1, padding=1)
 
         self.dec1 = nn.Sequential(
                 nn.Conv2d(in_channels=32+32, out_channels=32, kernel_size=3, stride=1, padding=1),
@@ -209,9 +213,44 @@ class KernelModelImpl(nn.Module):
                 nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
-        self.kernel1 = nn.Conv2d(in_channels=32, out_channels=25, kernel_size=3, stride=1, padding=1)
+        self.kernel1 = nn.Conv2d(in_channels=32, out_channels=self.kernel_total_weights, kernel_size=3, stride=1, padding=1)
+
+    def kernel_pred(self, img, weights):
+        width, height = img.shape[-1], img.shape[-2]
+
+        assert(img.shape[1] == self.imgs_to_filter and img.shape[2] == 3)
+
+        dense_weights = F.softmax(weights[:, 0:self.kernel_total_weights, ...], dim=1)
+
+        dense_weights = dense_weights.view(dense_weights.shape[0], self.imgs_to_filter, self.kernel_size * self.kernel_size, dense_weights.shape[-2], dense_weights.shape[-1])
+
+        padding = self.kernel_size // 2
+        padded = F.pad(img, (padding, padding, padding, padding))
+
+        shifted = []
+        for i in range(self.kernel_size):
+            for j in range(self.kernel_size):
+                shifted.append(padded[:, :, :, i:i + height, j:j + width])
+
+        img_stack = torch.stack(shifted, dim=2)
+        dense_output = torch.sum(dense_weights.unsqueeze(dim=3) * img_stack, dim=[1, 2])
+
+        return dense_output
+
+    def make_pyramid(self, tensor):
+        arr = [tensor]
+
+        for i in range(4):
+            tensor = F.avg_pool2d(tensor, kernel_size=2, stride=2)
+
+            arr.append(tensor)
+
+        return arr 
 
     def forward(self, color, normal, albedo, prev):
+        color_pyramid = self.make_pyramid(color)
+        prev_pyramid = self.make_pyramid(prev)
+
         full_input = torch.cat([color, normal, albedo, prev], dim=1)
         start = self.start(full_input)
 
@@ -227,12 +266,14 @@ class KernelModelImpl(nn.Module):
         enc4_out = self.enc4(out)
         out = F.avg_pool2d(enc4_out, kernel_size=2, stride=2)
 
-        enc5_out = self.enc5(out)
+        out = self.enc5(out)
 
         out = self.dec5(out)
 
         kernel = self.kernel5(out)
-        filtered = self.kernel_pred(color, kernel)
+
+        filter_in = torch.stack([color_pyramid[4], prev_pyramid[4], torch.zeros_like(out[:, 0:3, ...])], dim=1)
+        filtered = self.kernel_pred(filter_in, kernel)
 
         out = F.interpolate(out, scale_factor=2, mode='bilinear')
         filtered = F.interpolate(filtered, scale_factor=2, mode='bilinear')
@@ -240,30 +281,47 @@ class KernelModelImpl(nn.Module):
         out = torch.cat([out, enc4_out], dim=1)
         out = self.dec4(out)
         kernel = self.kernel4(out)
-        filtered = self.kernel_pred(filtered, kernel)
+
+        filter_in = torch.stack([color_pyramid[3], prev_pyramid[3], filtered], dim=1)
+        filtered = self.kernel_pred(filter_in, kernel)
+
+        out = F.interpolate(out, scale_factor=2, mode='bilinear')
+        filtered = F.interpolate(filtered, scale_factor=2, mode='bilinear')
 
         out = torch.cat([out, enc3_out], dim=1)
         out = self.dec3(out)
         kernel = self.kernel3(out)
-        filtered = self.kernel_pred(filtered, kernel)
+
+        filter_in = torch.stack([color_pyramid[2], prev_pyramid[2], filtered], dim=1)
+        filtered = self.kernel_pred(filter_in, kernel)
+
+        out = F.interpolate(out, scale_factor=2, mode='bilinear')
+        filtered = F.interpolate(filtered, scale_factor=2, mode='bilinear')
 
         out = torch.cat([out, enc2_out], dim=1)
         out = self.dec2(out)
         kernel = self.kernel2(out)
-        filtered = self.kernel_pred(filtered, kernel)
+
+        filter_in = torch.stack([color_pyramid[1], prev_pyramid[1], filtered], dim=1)
+        filtered = self.kernel_pred(filter_in, kernel)
+
+        out = F.interpolate(out, scale_factor=2, mode='bilinear')
+        filtered = F.interpolate(filtered, scale_factor=2, mode='bilinear')
 
         out = torch.cat([out, enc1_out], dim=1)
         out = self.dec1(out)
         kernel = self.kernel1(out)
-        filtered = self.kernel_pred(filtered, kernel)
+
+        filter_in = torch.stack([color_pyramid[0], prev_pyramid[0], filtered], dim=1)
+        filtered = self.kernel_pred(filter_in, kernel)
 
         return filtered
 
 class KernelModel(nn.Module):
     def __init__(self):
-        super(Model, self).__init__()
+        super(KernelModel, self).__init__()
 
-        self.model = ModelImpl()
+        self.model = KernelModelImpl()
 
         def init_weights(m):
             if isinstance(m, nn.Conv2d):
@@ -281,7 +339,7 @@ class KernelModel(nn.Module):
 
         mapped_color = torch.log1p(color)
         mapped_albedo = torch.log1p(albedo)
-        mapped_prev = torch.log1p(prev)
+        mapped_prev = torch.log1p(prev1)
 
         out = self.model(mapped_color, normal, mapped_albedo, mapped_prev)
 
