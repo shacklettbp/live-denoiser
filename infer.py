@@ -5,7 +5,7 @@ from state import StateManager
 from arg_handler import parse_infer_args
 from modified_model import DenoiserModel
 from modified_vanilla_model import VanillaDenoiserModelWrapper
-from smallmodel import SmallModelWrapper
+from smallmodel import KernelModel
 from utils import tonemap
 from data_loading import pad_data, save_exr, save_png
 from filters import simple_filter
@@ -14,11 +14,13 @@ import os
 args = parse_infer_args()
 dev = torch.device('cuda:{}'.format(args.gpu))
 if args.vanilla_net:
-    model = VanillaDenoiserModelWrapper(init=False).to(dev)
+    model = KernelModel().to(dev)
 else:
     model = DenoiserModelWrapper(recurrent=not args.disable_recurrence, init=False).to(dev)
 
-model.load_state_dict(torch.load(args.weights, map_location='cpu'))
+state_dict = torch.load(args.weights, map_location='cpu')
+state_dict = { '.'.join(k.split('.')[1:]): v for k, v in state_dict.items() }
+model.load_state_dict(state_dict)
 model.eval()
 
 dataset = ExrDataset(dataset_path=args.inputs,
