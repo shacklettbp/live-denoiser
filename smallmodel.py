@@ -350,7 +350,7 @@ class KernelModel(nn.Module):
 class TemporalSmallModel(nn.Module):
     def __init__(self, *args, **kwargs):
         super(TemporalSmallModel, self).__init__()
-        self.model = SmallModel(*args, **kwargs)
+        self.model = KernelModel(*args, **kwargs)
 
     def forward(self, color, normal, albedo):
         color = color.transpose(0, 1)
