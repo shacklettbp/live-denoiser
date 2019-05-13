@@ -236,15 +236,27 @@ class KernelModelImpl(nn.Module):
                 nn.ReLU(),
                 nn.Conv2d(in_channels=32, out_channels=self.kernel_total_weights, kernel_size=3, stride=1, padding=1))
 
+        self.albedo_kernel2 = nn.Sequential(
+                nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=32, out_channels=self.kernel_size * self.kernel_size, kernel_size=3, stride=1, padding=1))
 
-    def kernel_pred(self, img, weights):
+        self.albedo_kernel1 = nn.Sequential(
+                nn.Conv2d(in_channels=32+3, out_channels=32, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=32, out_channels=self.kernel_size * self.kernel_size * 2, kernel_size=3, stride=1, padding=1))
+
+    def kernel_pred(self, img, weights, num_filtered=None):
         width, height = img.shape[-1], img.shape[-2]
+        
+        if num_filtered is None:
+            num_filtered = self.imgs_to_filter
 
-        assert(img.shape[1] == self.imgs_to_filter and img.shape[2] == 3)
+        assert(img.shape[1] == num_filtered and img.shape[2] == 3)
 
         dense_weights = F.softmax(weights[:, 0:self.kernel_total_weights, ...], dim=1)
 
-        dense_weights = dense_weights.view(dense_weights.shape[0], self.imgs_to_filter, self.kernel_size * self.kernel_size, dense_weights.shape[-2], dense_weights.shape[-1])
+        dense_weights = dense_weights.view(dense_weights.shape[0], num_filtered, self.kernel_size * self.kernel_size, dense_weights.shape[-2], dense_weights.shape[-1])
 
         padding = self.kernel_size // 2
         padded = F.pad(img, (padding, padding, padding, padding))
@@ -259,10 +271,10 @@ class KernelModelImpl(nn.Module):
 
         return dense_output
 
-    def make_pyramid(self, tensor):
+    def make_pyramid(self, tensor, depth=5):
         arr = [tensor]
 
-        for i in range(4):
+        for i in range(depth-1):
             tensor = F.avg_pool2d(tensor, kernel_size=2, stride=2)
 
             arr.append(tensor)
@@ -272,6 +284,7 @@ class KernelModelImpl(nn.Module):
     def forward(self, color, normal, albedo, prev):
         color_pyramid = self.make_pyramid(color)
         prev_pyramid = self.make_pyramid(prev)
+        albedo_pyramid = self.make_pyramid(albedo, depth=2)
 
         full_input = torch.cat([color, normal, albedo, prev], dim=1)
         start = self.start(full_input)
@@ -335,7 +348,16 @@ class KernelModelImpl(nn.Module):
         filter_in = torch.stack([color_pyramid[0], prev_pyramid[0], filtered], dim=1)
         filtered = self.kernel_pred(filter_in, kernel_weights)
 
-        return filtered
+        # Albleedo
+        kernel_weights = self.albedo_kernel2(feature_pyramid[1])
+        albedo_filtered = self.kernel_pred(albedo_pyramid[1].unsqueeze(dim=1), kernel_weights, 1)
+        albedo_filtered = F.interpolate(albedo_filtered, scale_factor=2, mode='bilinear')
+
+        kernel_weights = self.albedo_kernel1(torch.cat([feature_pyramid[0], filtered], dim=1))
+        albedo_filter_in = torch.stack([albedo_pyramid[0], albedo_filtered], dim=1)
+        albedo_filtered = self.kernel_pred(albedo_filter_in, kernel_weights, 2)
+
+        return filtered, albedo_filtered
 
 class KernelModel(nn.Module):
     def __init__(self):
@@ -361,11 +383,12 @@ class KernelModel(nn.Module):
         mapped_albedo = torch.log1p(albedo)
         mapped_prev = torch.log1p(prev1)
 
-        out = self.model(mapped_color, normal, mapped_albedo, mapped_prev)
+        out, albedo_out = self.model(mapped_color, normal, mapped_albedo, mapped_prev)
 
-        exp = torch.expm1(out)
+        out = torch.expm1(out)
+        albedo_out = torch.expm1(albedo_out)
 
-        return exp * (albedo + eps), exp
+        return out * (albedo_out + eps), out, albedo_out
 
 class TemporalSmallModel(nn.Module):
     def __init__(self, *args, **kwargs):
@@ -379,20 +402,21 @@ class TemporalSmallModel(nn.Module):
 
         all_outputs = []
         ei_outputs = []
+        albedo_outputs = []
 
         prev1 = torch.zeros_like(color[0]);
         prev2 = torch.zeros_like(prev1);
 
         for i in range(color.shape[0]):
-            output, ei = self.model(color[i], normal[i], albedo[i], prev1, prev2)
+            output, ei, albedo_out = self.model(color[i], normal[i], albedo[i], prev1, prev2)
             all_outputs.append(output)
             ei_outputs.append(ei)
+            albedo_outputs.append(albedo_out)
 
             prev2 = prev1
             prev1 = ei
 
-        return torch.stack(all_outputs, dim=1), torch.stack(ei_outputs, dim=1)
-
+        return torch.stack(all_outputs, dim=1), torch.stack(ei_outputs, dim=1), torch.stack(albedo_outputs, dim=1)
 
 class SmallModelWrapper(nn.Module):
     def __init__(self, *args, **kwargs):

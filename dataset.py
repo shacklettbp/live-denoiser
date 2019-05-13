@@ -21,7 +21,6 @@ def get_files(dir, extension, num_imgs=None, one_idx=False):
         files.append((os.path.join(dir, "hdr_{}.{}".format(i, extension)),
                       os.path.join(dir, "normal_{}.{}".format(i, extension)),
                       os.path.join(dir, "albedo_{}.{}".format(i, extension)),
-                      os.path.join(dir, "alt_hdr_{}.{}".format(i, extension)),
                       os.path.join(dir, "direct_{}.{}".format(i, extension)),
                       os.path.join(dir, "indirect_{}.{}".format(i, extension)),
                       os.path.join(dir, "shadowt_{}.{}".format(i, extension))))
@@ -52,8 +51,7 @@ def augment_data(color, normal, albedo, ref, ref_albedo, direct, indirect, tshad
     return [ color, normal, albedo, ref, ref_albedo, direct, indirect, tshadow ]
 
 class ExrDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset_path, training=True, num_imgs=None, cropsize=None):
-        self.training = training 
+    def __init__(self, dataset_path, num_imgs=None, cropsize=None):
         self.files = get_files(dataset_path, 'exr', num_imgs=num_imgs)
         self.cropsize = cropsize
 
@@ -61,12 +59,11 @@ class ExrDataset(torch.utils.data.Dataset):
         return len(self.files)
 
     def __getitem__(self, idx):
-        hdr_filename, normal_filename, albedo_filename, ref_hdr_filename, direct_filename, indirect_filename, tshadow_filename = self.files[idx]
+        hdr_filename, normal_filename, albedo_filename, direct_filename, indirect_filename, tshadow_filename = self.files[idx]
 
         color = load_exr(hdr_filename)
         normal = load_exr(normal_filename)[0:2, ...]
         albedo = load_exr(albedo_filename)
-        reference = load_exr(ref_hdr_filename) if self.training else None
         #direct = load_exr(direct_filename)
         #indirect = load_exr(indirect_filename)
         #tshadow = load_exr(tshadow_filename)
@@ -92,44 +89,7 @@ class ExrDataset(torch.utils.data.Dataset):
                             row_idx:row_idx+self.cropsize[0],
                             col_idx:col_idx+self.cropsize[1]]
 
-            if self.training:
-                reference = reference[...,
-                                      row_idx:row_idx+self.cropsize[0],
-                                      col_idx:col_idx+self.cropsize[1]]
-
-        if self.training:
-            return [ color, normal, albedo, reference ]#, direct, indirect, tshadow ]
-        else:
-            return [ color, normal, albedo]#, direct, indirect, tshadow ]
-
-# FIXME out of date
-class NumpyRawDataset(torch.utils.data.Dataset):
-    def __init__(self, fullshape, cropsize, num_imgs=None):
-        self.files = get_files('dmp', num_imgs=num_imgs)
-        self.fullshape = fullshape
-        self.cropsize = cropsize
-
-    def __len__(self):
-        return len(self.files)
-
-    def __getitem__(self, idx):
-        _, height, width = self.fullshape
-
-        max_top = height - self.cropsize[0]
-        max_left = width - self.cropsize[1]
-
-        col_idx = random.randint(0, max_left)
-        row_idx = random.randint(0, max_top)
-
-        hdr_filename, normal_filename, albedo_filename = self.training_files[idx]
-        ref_hdr_filename, _, _ = self.reference_files[idx]
-
-        color_tensor = load_raw_crop(hdr_filename, col_idx, row_idx, self.cropsize, self.fullshape)
-        reference_tensor = load_raw_crop(ref_hdr_filename, col_idx, row_idx, self.cropsize, self.fullshape)
-        normal_tensor = load_raw_crop(normal_filename, col_idx, row_idx, self.cropsize, self.fullshape)
-        albedo_tensor = load_raw_crop(albedo_filename, col_idx, row_idx, self.cropsize, self.fullshape)
-
-        return self.augment(color_tensor, reference_tensor, normal_tensor, albedo_tensor)
+        return [ color, normal, albedo]#, direct, indirect, tshadow ]
 
 class PreProcessedDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_path, augment=True, num_imgs=None):

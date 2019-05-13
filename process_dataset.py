@@ -56,8 +56,8 @@ for idx in range(0, num_imgs - args.num_temporal, args.num_temporal + 1):
     temporal = []
 
     for i in range(args.num_temporal + 1):
-        hdr_fn, normal_fn, albedo_fn, ref_fn, direct_fn, indirect_fn, shadowt_fn = files[idx + i]
-        ref_fn, _, ref_albedo_fn, _, _, _, _  = ref_files[idx + i]
+        hdr_fn, normal_fn, albedo_fn, direct_fn, indirect_fn, shadowt_fn = files[idx + i]
+        ref_fn, _, ref_albedo_fn, _, _, _  = ref_files[idx + i]
 
         hdr = load_exr(hdr_fn)
         normal = load_exr(normal_fn)[0:2, ...]

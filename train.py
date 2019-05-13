@@ -8,7 +8,7 @@ from arg_handler import parse_train_args
 from modified_model import DenoiserModel, TemporalDenoiserModel
 from modified_vanilla_model import TemporalVanillaDenoiserModel, VanillaDenoiserModel
 from smallmodel import TemporalSmallModel
-from dataset import NumpyRawDataset, PreProcessedDataset
+from dataset import PreProcessedDataset
 from state import StateManager
 from loss import Loss
 from utils import iter_with_device
@@ -65,9 +65,9 @@ def train_epoch(model, optimizer, scheduler, dataloader):
         color, normal, albedo, ref, ref_albedo = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), ref_albedo.to(dev)
 
         optimizer.zero_grad()
-        outputs, e_irradiances = model(color, normal, albedo)
+        outputs, e_irradiances, albedo_outs = model(color, normal, albedo)
         ref_e_irradiance = ref / (ref_albedo + 0.001)
-        loss, _ = loss_gen.compute(ref_e_irradiance, e_irradiances)
+        loss, _ = loss_gen.compute(ref_e_irradiance, e_irradiances, ref_albedo, albedo_outs)
         loss.backward()
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1e-3)
@@ -83,9 +83,9 @@ def train_epoch(model, optimizer, scheduler, dataloader):
 
         num_val_batches += 1
         with torch.no_grad():
-            outputs, e_irradiances = model(color, normal, albedo)
+            outputs, e_irradiances, albedo_outs = model(color, normal, albedo)
             ref_e_irradiance = ref / (ref_albedo + 0.001)
-            loss, _ = loss_gen.compute(ref_e_irradiance,  e_irradiances)
+            loss, _ = loss_gen.compute(ref_e_irradiance,  e_irradiances, ref_albedo, albedo_outs)
             total_val_loss += loss.cpu()
     
     val_loss = total_val_loss / num_val_batches

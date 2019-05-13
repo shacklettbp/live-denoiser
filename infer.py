@@ -25,7 +25,6 @@ model.load_state_dict(state_dict)
 model.eval()
 
 dataset = ExrDataset(dataset_path=args.inputs,
-                     training=False,
                      num_imgs=args.num_imgs)
 
 color_prev1 = torch.zeros_like(pad_data(dataset[0][0].to(dev)).unsqueeze(dim=0))
@@ -38,7 +37,7 @@ for i in range(args.start_frame, len(dataset)):
     color, normal, albedo = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0)
 
     with torch.no_grad():
-        output, e_irradiance = model(color, normal, albedo, color_prev1, color_prev2)
+        output, e_irradiance, albedo_output = model(color, normal, albedo, color_prev1, color_prev2)
 
         color_prev2 = color_prev1
         if args.disable_recurrence:
@@ -51,7 +50,11 @@ for i in range(args.start_frame, len(dataset)):
         output = output.squeeze(dim=0)
         e_irradiance = e_irradiance.squeeze(dim=0)
 
+        albedo_output = albedo_output[..., 0:args.img_height, 0:args.img_width]
+        albedo_output = albedo.squeeze(dim=0)
+
     save_exr(output, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
+    #save_exr(albedo_output, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
     #save_exr(e_irradiance, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
 
     #save_png(output, os.path.join(args.outputs, 'out_{}.png'.format(i)))

@@ -107,7 +107,7 @@ class TrainingState:
         self.prev_ref_irradiance2 = None
         self.args = args
 
-def train(state, color, normal, albedo, ref_color, alt_color, alt_ref):
+def train(state, color, normal, albedo, alt_color, alt_color2, alt_color3, alt_albedo, alt_albedo2, alt_albedo3):
     print(state.frame_num)
     state.frame_num += 1
     if (state.frame_num - 1) % 4 != 0:
@@ -115,13 +115,13 @@ def train(state, color, normal, albedo, ref_color, alt_color, alt_ref):
 
     total_loss = 0
 
-    permutations = list(itertools.permutations([color, ref_color, alt_color, alt_ref], 2))
+    permutations = list(itertools.permutations([(color, albedo), (alt_color, alt_albedo), (alt_color2, alt_albedo2), (alt_color3, alt_albedo3)], 2))
 
     for i in range(state.args.outer_train_iters):
-        cur_color, cur_ref = permutations[i % 12]
+        (cur_color, cur_albedo), (ref_color, ref_albedo) = permutations[i % 12]
 
-        cur_ref_irradiance = cur_ref / (albedo + 0.001)
-        stack = torch.cat([cur_color, normal, albedo, cur_ref_irradiance, state.prev_irradiance1, state.prev_irradiance2, state.prev_ref_irradiance1, state.prev_ref_irradiance2], dim=1)
+        cur_ref_irradiance = ref_color / (ref_albedo + 0.001)
+        stack = torch.cat([cur_color, normal, albedo, cur_ref_irradiance, state.prev_irradiance1, state.prev_irradiance2, state.prev_ref_irradiance1, state.prev_ref_irradiance2, ref_albedo], dim=1)
 
         idxs = list(product(list(chain(range(0, color.shape[-1], state.args.cropsize)[:-1], [color.shape[-1] - state.args.cropsize])), list(chain(range(0, color.shape[-2], state.args.cropsize)[:-1], [color.shape[-2] - state.args.cropsize]))))
 
@@ -167,18 +167,20 @@ def train(state, color, normal, albedo, ref_color, alt_color, alt_ref):
         prev_irradiance2_train = train_crops[:, 14:17, ...]
         prev_ref_irradiance1_train = train_crops[:, 17:20, ...]
         prev_ref_irradiance2_train = train_crops[:, 20:23, ...]
+        ref_albedo_train = train_crops[:, 23:26, ...]
 
         if state.args.augment:
+            print("FIXME")
             color_train, normal_train, albedo_train, ref_irradiance_train, prev_irradiance1_train, prev_irradiance2_train = augment(color_train, normal_train, albedo_train, ref_irradiance_train, prev_irradiance1_train, prev_irradiance2_train, prev_ref_irradiance1_train, prev_ref_irradiance2_train)
 
         for i in range(state.args.inner_train_iters):
-            output, e_irradiance = state.model(color_train, normal_train, albedo_train, prev_irradiance1_train, prev_irradiance2_train)
+            output, e_irradiance, output_albedos = state.model(color_train, normal_train, albedo_train, prev_irradiance1_train, prev_irradiance2_train)
             state.optimizer.zero_grad()
 
             ref_irradiance_train = torch.stack([prev_ref_irradiance2_train, prev_ref_irradiance1_train, ref_irradiance_train], dim=1)
             e_irradiance = torch.stack([prev_irradiance2_train, prev_irradiance1_train, e_irradiance], dim=1)
 
-            loss, _ = state.loss_gen.compute(ref_irradiance_train, e_irradiance)
+            loss, _ = state.loss_gen.compute(ref_irradiance_train, e_irradiance, ref_albedo_train, output_albedos)
             total_loss += loss
             loss.backward()
             state.optimizer.step()
@@ -231,12 +233,7 @@ def init_training_state(dev=torch.device('cuda:{}'.format(0)), init_weights=None
 
     return TrainingState(model, optimizer, scheduler, loss_gen, args)
 
-def train_and_eval(training_state, color, ref_color, normal, albedo, alt_color, alt_ref, crop=True):
-    color[torch.isnan(color)] = 0
-    ref_color[torch.isnan(ref_color)] = 0
-
-    ref_e_irradiance = ref_color / (albedo + 0.001)
-
+def train_and_eval(training_state, color, normal, albedo, alt_color, alt_color2, alt_color3, alt_albedo, alt_albedo2, alt_albedo3, crop=True):
     height, width = color.shape[-2:]
 
     if crop:
@@ -255,16 +252,16 @@ def train_and_eval(training_state, color, ref_color, normal, albedo, alt_color, 
         training_state.prev_ref_irradiance1 = training_state.prev_irradiance1
         training_state.prev_ref_irradiance2 = training_state.prev_irradiance1
 
-    train(training_state, color, normal, albedo, ref_color, alt_color, alt_ref)
+    train(training_state, color, normal, albedo, alt_color, alt_color2, alt_color3, alt_albedo, alt_albedo2, alt_albedo3)
 
     with torch.no_grad():
         color_pad, normal_pad, albedo_pad = pad_data(color), pad_data(normal), pad_data(albedo)
-        output, e_irradiance = training_state.model(color_pad, normal_pad, albedo_pad, pad_data(training_state.prev_irradiance1), pad_data(training_state.prev_irradiance2))
+        output, e_irradiance, albedo_outputs = training_state.model(color_pad, normal_pad, albedo_pad, pad_data(training_state.prev_irradiance1), pad_data(training_state.prev_irradiance2))
         training_state.prev_irradiance2 = training_state.prev_irradiance1
         training_state.prev_irradiance1 = e_irradiance[..., 0:height, 0:width]
 
         training_state.prev_ref_irradiance2 = training_state.prev_ref_irradiance1
-        training_state.prev_ref_irradiance1 = ref_e_irradiance
+        training_state.prev_ref_irradiance1 = alt_color / (alt_albedo + 0.001)
 
         output = output[..., 0:height, 0:width]
 
