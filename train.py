@@ -14,12 +14,14 @@ from loss import Loss
 from utils import iter_with_device
 from cyclic import CyclicLR
 from filters import simple_filter
+from data_loading import save_exr
 
 args = parse_train_args()
 
 dev = torch.device("cuda:{}".format(args.gpu))
 if args.vanilla_net:
     model = TemporalSmallModel().to(dev)
+    #model = TemporalVanillaDenoiserModel(init=True).to(dev)
 else:
     model = TemporalDenoiserModel(recurrent=not args.disable_recurrence, init=args.restore is None).to(dev)
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))#, weight_decay=1e-5)
@@ -48,7 +50,8 @@ num_batches = len(dataset) / args.batch_size
 #    return args.lr
 #
 #scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_schedule)
-scheduler = CyclicLR(optimizer, args.lr / 10, args.lr, step_size=10*num_batches)
+#scheduler = CyclicLR(optimizer, args.lr / 10, args.lr, step_size=10*num_batches)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, cooldown=10, patience=50)
 
 val_dataset = PreProcessedDataset(dataset_path=args.validation_set, augment=False)
 val_dataloader = DataLoader(val_dataset, batch_size=1, num_workers=2,
@@ -57,14 +60,13 @@ val_dataloader = DataLoader(val_dataset, batch_size=1, num_workers=2,
 def train_epoch(model, optimizer, scheduler, dataloader):
     #scheduler.step()
     model.train()
-    for color, normal, albedo, ref in iter_with_device(dataloader, args.gpu):
-        scheduler.batch_step()
+    for color, normal, albedo, ref, ref_albedo in iter_with_device(dataloader, args.gpu):
         #color, normal, albedo, ref, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
-        color, normal, albedo, ref = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev)
+        color, normal, albedo, ref, ref_albedo = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), ref_albedo.to(dev)
 
         optimizer.zero_grad()
         outputs, e_irradiances = model(color, normal, albedo)
-        ref_e_irradiance = ref / (albedo + 0.001)
+        ref_e_irradiance = ref / (ref_albedo + 0.001)
         loss, _ = loss_gen.compute(ref_e_irradiance, e_irradiances)
         loss.backward()
 
@@ -75,18 +77,20 @@ def train_epoch(model, optimizer, scheduler, dataloader):
     model.eval()
     total_val_loss = 0
     num_val_batches = 0
-    for color, normal, albedo, ref in iter_with_device(val_dataloader, args.gpu):
+    for color, normal, albedo, ref, ref_albedo in iter_with_device(val_dataloader, args.gpu):
         #color, normal, albedo, ref, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
-        color, normal, albedo, ref = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev)
+        color, normal, albedo, ref, ref_albedo = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), ref_albedo.to(dev)
 
         num_val_batches += 1
         with torch.no_grad():
             outputs, e_irradiances = model(color, normal, albedo)
-            ref_e_irradiance = ref / (albedo + 0.001)
+            ref_e_irradiance = ref / (ref_albedo + 0.001)
             loss, _ = loss_gen.compute(ref_e_irradiance,  e_irradiances)
             total_val_loss += loss.cpu()
     
-    print("Val loss: {}".format(total_val_loss / num_val_batches))
+    val_loss = total_val_loss / num_val_batches
+    print("Val loss: {}".format(val_loss))
+    scheduler.step(val_loss)
 
 def train(model, optimizer, scheduler, dataloader, state_mgr, num_epochs):
     interrupted = False

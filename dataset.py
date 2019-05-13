@@ -28,13 +28,14 @@ def get_files(dir, extension, num_imgs=None, one_idx=False):
 
     return files
 
-def augment_data(color, normal, albedo, ref, direct, indirect, tshadow):
+def augment_data(color, normal, albedo, ref, ref_albedo, direct, indirect, tshadow):
     assert(ref is not None)
     if random.random() < 0.5:
         color = color.flip(-1)
         normal = normal.flip(-1)
         albedo = albedo.flip(-1)
         ref = ref.flip(-1)
+        ref_albedo = ref_albedo.flip(-1)
         direct = direct.flip(-1)
         indirect = indirect.flip(-1)
         tshadow = tshadow.flip(-1)
@@ -44,10 +45,11 @@ def augment_data(color, normal, albedo, ref, direct, indirect, tshadow):
     color = color[:, color_indices, ...]
     albedo = albedo[:, color_indices, ...]
     ref = ref[:, color_indices, ...]
+    ref_albedo = ref_albedo[:, color_indices, ...]
     direct = direct[:, color_indices, ...]
     indirect = indirect[:, color_indices, ...]
 
-    return [ color, normal, albedo, ref, direct, indirect, tshadow ]
+    return [ color, normal, albedo, ref, ref_albedo, direct, indirect, tshadow ]
 
 class ExrDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_path, training=True, num_imgs=None, cropsize=None):
@@ -171,6 +173,7 @@ class PreProcessedDataset(torch.utils.data.Dataset):
         normal = [load_raw(f[1], (2, *self.fullshape[1:])) for f in filenames]
         albedo = [load_raw(f[2], self.fullshape) for f in filenames]
         reference = [load_raw(f[3], self.fullshape) for f in filenames]
+        ref_albedo = [load_raw(f[4], self.fullshape) for f in filenames]
         #direct = [load_raw(f[4], self.fullshape) for f in filenames]
         #indirect = [load_raw(f[5], self.fullshape) for f in filenames]
         #tshadow = [load_raw(f[6], self.fullshape) for f in filenames]
@@ -179,6 +182,7 @@ class PreProcessedDataset(torch.utils.data.Dataset):
         normal = torch.stack(normal)
         albedo = torch.stack(albedo)
         reference = torch.stack(reference)
+        ref_albedo = torch.stack(ref_albedo)
         #direct = torch.stack(direct)
         #indirect = torch.stack(indirect)
         #tshadow = torch.stack(tshadow)
@@ -190,6 +194,7 @@ class PreProcessedDataset(torch.utils.data.Dataset):
             normal = pad_data(normal)
             albedo = pad_data(albedo)
             reference = pad_data(reference)
+            ref_albedo = pad_data(ref_albedo)
             #direct = pad_data(direct)
             #indirect = pad_data(indirect)
             #tshadow = pad_data(tshadow)
@@ -199,6 +204,6 @@ class PreProcessedDataset(torch.utils.data.Dataset):
         tshadow = None
 
         if self.perform_augmentations:
-            return augment_data(color, normal, albedo, reference, direct, indirect, tshadow)
+            return augment_data(color, normal, albedo, reference, ref_albedo, direct, indirect, tshadow)
         else:
-            return [color, normal, albedo, reference]#, direct, indirect, tshadow]
+            return [color, normal, albedo, reference, ref_albedo]#, direct, indirect, tshadow]

@@ -109,6 +109,10 @@ class TrainingState:
 
 def train(state, color, normal, albedo, ref_color, alt_color, alt_ref):
     print(state.frame_num)
+    state.frame_num += 1
+    if (state.frame_num - 1) % 4 != 0:
+        return
+
     total_loss = 0
 
     permutations = list(itertools.permutations([color, ref_color, alt_color, alt_ref], 2))
@@ -155,7 +159,6 @@ def train(state, color, normal, albedo, ref_color, alt_color, alt_ref):
 
         state.prev_crops = train_crops[save_indices]
 
-
         color_train = train_crops[:, 0:3, ...]
         normal_train = train_crops[:, 3:5, ... ]
         albedo_train = train_crops[:, 5:8, ...]
@@ -182,7 +185,6 @@ def train(state, color, normal, albedo, ref_color, alt_color, alt_ref):
             state.scheduler.batch_step()
 
     #state.scheduler.step()
-    state.frame_num += 1
     print(float(loss.cpu()) / state.args.outer_train_iters)
 
 def create_model(args, dev, weights):
@@ -200,8 +202,11 @@ def create_model(args, dev, weights):
 
 def init_training_state(dev=torch.device('cuda:{}'.format(0)), init_weights=None):
     #args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=32, cropsize=64, augment=False, importance_sample=False)
-    args = Args(lr=0.0003, outer_train_iters=128, inner_train_iters=1, num_crops=8, cropsize=128, augment=False, importance_sample=False)
+    args = Args(lr=0.00003, outer_train_iters=128, inner_train_iters=1, num_crops=8, cropsize=128, augment=False, importance_sample=False)
     model = create_model(args, dev, init_weights)
+    #for name, param in model.named_parameters():
+    #    if not name.startswith("model.kernel"):
+    #        param.requires_grad_(False)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))
     #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
@@ -232,6 +237,8 @@ def train_and_eval(training_state, color, ref_color, normal, albedo, alt_color, 
 
     ref_e_irradiance = ref_color / (albedo + 0.001)
 
+    height, width = color.shape[-2:]
+
     if crop:
         orig_color = color 
         orig_normal = normal
@@ -242,21 +249,19 @@ def train_and_eval(training_state, color, ref_color, normal, albedo, alt_color, 
         normal = normal[..., 480:960+480]
         albedo = albedo[..., 480:960+480]
 
-    color_pad, normal_pad, albedo_pad = pad_data(color), pad_data(normal), pad_data(albedo)
-
     if training_state.prev_irradiance1 is None:
-        training_state.prev_irradiance1 = torch.zeros_like(color_pad)
+        training_state.prev_irradiance1 = torch.zeros_like(color)
         training_state.prev_irradiance2 = training_state.prev_irradiance1
         training_state.prev_ref_irradiance1 = training_state.prev_irradiance1
         training_state.prev_ref_irradiance2 = training_state.prev_irradiance1
 
-    height, width = color.shape[-2:]
     train(training_state, color, normal, albedo, ref_color, alt_color, alt_ref)
 
     with torch.no_grad():
-        output, e_irradiance = training_state.model(color_pad, normal_pad, albedo_pad, training_state.prev_irradiance1, training_state.prev_irradiance2)
+        color_pad, normal_pad, albedo_pad = pad_data(color), pad_data(normal), pad_data(albedo)
+        output, e_irradiance = training_state.model(color_pad, normal_pad, albedo_pad, pad_data(training_state.prev_irradiance1), pad_data(training_state.prev_irradiance2))
         training_state.prev_irradiance2 = training_state.prev_irradiance1
-        training_state.prev_irradiance1 = e_irradiance
+        training_state.prev_irradiance1 = e_irradiance[..., 0:height, 0:width]
 
         training_state.prev_ref_irradiance2 = training_state.prev_ref_irradiance1
         training_state.prev_ref_irradiance1 = ref_e_irradiance
