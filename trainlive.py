@@ -15,6 +15,7 @@ from filters import simple_filter, bilateral_filter
 from smallmodel import SmallModel, KernelModel
 import sys
 import itertools
+from data_loading import save_exr # debugging purposes
 
 def prefilter_color(color, albedo):
     color = color / (albedo + 0.001)
@@ -169,10 +170,23 @@ def train(state, color, normal, albedo, alt_color, alt_color2, alt_color3, alt_a
         prev2_train = train_crops[:, 17:20, ...]
         prev_ref1_train = train_crops[:, 20:23, ...]
         prev_ref2_train = train_crops[:, 23:26, ...]
-        prev_irradiance1_train = train_crops[:, 23:26, ...]
-        prev_irradiance2_train = train_crops[:, 26:29, ...]
+        prev_irradiance1_train = train_crops[:, 26:29, ...]
+        prev_irradiance2_train = train_crops[:, 29:32, ...]
 
         ref_irradiance_train = ref_color_train / (ref_albedo_train + 0.001)
+
+        #with torch.no_grad():
+        #    save_exr(color_train[0], "/tmp/color.exr")
+        #    save_exr(torch.cat([normal_train[0], torch.zeros_like(normal_train[0, 0:1, ...])],dim=0), "/tmp/normal.exr")
+        #    save_exr(albedo_train[0], "/tmp/albedo.exr")
+        #    save_exr(ref_color_train[0], "/tmp/ref_color.exr")
+        #    save_exr(ref_albedo_train[0], "/tmp/ref_albedo.exr")
+        #    save_exr(prev1_train[0], "/tmp/prev1.exr")
+        #    save_exr(prev2_train[0], "/tmp/prev2.exr")
+        #    save_exr(prev_ref1_train[0], "/tmp/prev_ref1.exr")
+        #    save_exr(prev_ref2_train[0], "/tmp/prev_ref2.exr")
+        #    save_exr(prev_irradiance1_train[0], "/tmp/prev_irradiance1.exr")
+        #    save_exr(prev_irradiance2_train[0], "/tmp/prev_irradiance2.exr")
 
         for i in range(state.args.inner_train_iters):
             output, e_irradiance, output_albedos = state.model(color_train, normal_train, albedo_train, prev_irradiance1_train, prev_irradiance2_train)
