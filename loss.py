@@ -33,7 +33,7 @@ class Loss:
         return d_x, d_y
     
     def compute(self, refs, outputs, ref_e_irradiance, e_irradiance, ref_albedos, albedos):
-        assert(len(e_irradiance.shape) == 5) # We need the temporal component
+        assert(len(refs.shape) == 5 and len(outputs.shape) == 5) # We need the temporal component
 
         #noise2noise_loss = (out - ref)**2/(out.detach()**2 + 0.01)
         noise2noise_loss = 0
