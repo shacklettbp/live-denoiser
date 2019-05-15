@@ -32,7 +32,7 @@ class Loss:
 
         return d_x, d_y
     
-    def compute(self, ref_e_irradiance, e_irradiance, ref_albedos, albedos):
+    def compute(self, refs, outputs, ref_e_irradiance, e_irradiance, ref_albedos, albedos):
         assert(len(e_irradiance.shape) == 5) # We need the temporal component
 
         #noise2noise_loss = (out - ref)**2/(out.detach()**2 + 0.01)
@@ -45,10 +45,14 @@ class Loss:
         #loss = noise2noise_loss.mean()# + 1e-4 * lum_loss.mean() + 1e-3 * (d_x.mean() + d_y.mean())
         irradiance_loss = (((e_irradiance - ref_e_irradiance)**2)/(e_irradiance.detach()**2 + 0.01)).mean()
 
-        temporal_loss = (((e_irradiance[:, 0:2, ...] - e_irradiance[:, 1:3, ...]) - (ref_e_irradiance[:, 0:2, ...] - ref_e_irradiance[:, 1:3, ...]))**2).mean()
+        ref_temporal_gradients = refs[:, 0:2, ...] - refs[:, 1:3, ...]
+        output_temporal_gradients = outputs[:, 0:2, ...] - outputs[:, 1:3, ...]
 
-        albedo_loss = (((albedos - ref_albedos)**2)/(albedos.detach()**2 + 0.01)).mean()
+        temporal_loss = (((output_temporal_gradients - ref_temporal_gradients)**2)/(output_temporal_gradients.detach()**2 + 0.01)).mean()
+
+        #albedo_loss = (((albedos - ref_albedos)**2)/(albedos.detach()**2 + 0.01)).mean()
+        albedo_loss = ((albedos - ref_albedos)**2).mean()
         
-        loss = irradiance_loss + 1e-3 * temporal_loss + albedo_loss
+        loss = irradiance_loss + temporal_loss + albedo_loss
 
         return loss, noise2noise_loss
