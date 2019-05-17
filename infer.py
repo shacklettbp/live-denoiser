@@ -30,6 +30,9 @@ dataset = ExrDataset(dataset_path=args.inputs,
 color_prev1 = torch.zeros_like(pad_data(dataset[0][0].to(dev)).unsqueeze(dim=0))
 color_prev2 = torch.zeros_like(color_prev1)
 
+if not os.path.isdir(args.outputs):
+    os.makedirs(args.outputs, exist_ok = True)
+
 for i in range(args.start_frame, len(dataset)):
     color, normal, albedo = dataset[i]
     color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
@@ -54,7 +57,7 @@ for i in range(args.start_frame, len(dataset)):
         albedo_output = albedo.squeeze(dim=0)
 
     save_exr(output, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
-    #save_exr(albedo_output, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
+    save_exr(albedo_output, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
     #save_exr(e_irradiance, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
 
     #save_png(output, os.path.join(args.outputs, 'out_{}.png'.format(i)))

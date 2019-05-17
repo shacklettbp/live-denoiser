@@ -45,7 +45,7 @@ class StateManager:
                 except:
                     repo_path = '.'
                 repo = pygit2.Repository(repo_path)
-                print("Commit: {}".format(repo.head.get_object().short_id), file=f)
+                print("Commit: {}".format(repo.head.peel().short_id), file=f)
         else:
             self.weights_dir = args.restore
             weights = glob.iglob(os.path.join(self.weights_dir, '*pth'))
