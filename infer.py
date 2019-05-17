@@ -54,10 +54,10 @@ for i in range(args.start_frame, len(dataset)):
         e_irradiance = e_irradiance.squeeze(dim=0)
 
         albedo_output = albedo_output[..., 0:args.img_height, 0:args.img_width]
-        albedo_output = albedo.squeeze(dim=0)
+        albedo_output = albedo_output.squeeze(dim=0)
 
     save_exr(output, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
     save_exr(albedo_output, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
-    #save_exr(e_irradiance, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
+    save_exr(e_irradiance, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
 
     #save_png(output, os.path.join(args.outputs, 'out_{}.png'.format(i)))
