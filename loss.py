@@ -54,8 +54,5 @@ class Loss:
         albedo_loss = ((albedos - ref_albedos)**2).mean()
         
         loss = irradiance_loss + temporal_loss + albedo_loss
-        print(irradiance_loss)
-        print(temporal_loss)
-        print(albedo_loss)
 
         return loss, irradiance_loss, temporal_loss, albedo_loss
