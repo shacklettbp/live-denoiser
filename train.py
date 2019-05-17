@@ -67,7 +67,7 @@ def train_epoch(model, optimizer, scheduler, dataloader):
         optimizer.zero_grad()
         outputs, e_irradiances, albedo_outs = model(color, normal, albedo)
         ref_e_irradiance = ref / (ref_albedo + 0.001)
-        loss, _ = loss_gen.compute(ref, outputs, ref_e_irradiance, e_irradiances, ref_albedo, albedo_outs)
+        loss, _, _, _ = loss_gen.compute(ref, outputs, ref_e_irradiance, e_irradiances, ref_albedo, albedo_outs)
         loss.backward()
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1e-3)
@@ -76,6 +76,9 @@ def train_epoch(model, optimizer, scheduler, dataloader):
 
     model.eval()
     total_val_loss = 0
+    total_ei_loss = 0
+    total_temporal_loss = 0
+    total_albedo_loss = 0
     num_val_batches = 0
     for color, normal, albedo, ref, ref_albedo in iter_with_device(val_dataloader, args.gpu):
         #color, normal, albedo, ref, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
@@ -85,11 +88,17 @@ def train_epoch(model, optimizer, scheduler, dataloader):
         with torch.no_grad():
             outputs, e_irradiances, albedo_outs = model(color, normal, albedo)
             ref_e_irradiance = ref / (ref_albedo + 0.001)
-            loss, _ = loss_gen.compute(ref, outputs, ref_e_irradiance,  e_irradiances, ref_albedo, albedo_outs)
+            loss, ei_loss, temp_loss, albedo_loss = loss_gen.compute(ref, outputs, ref_e_irradiance,  e_irradiances, ref_albedo, albedo_outs)
             total_val_loss += loss.cpu()
+            total_ei_loss += loss.cpu()
+            total_temporal_loss += loss.cpu()
+            total_albedo_loss += loss.cpu()
     
     val_loss = total_val_loss / num_val_batches
-    print("Val loss: {}".format(val_loss))
+    val_ei_loss = total_ei_loss / num_val_batches
+    val_temp_loss = total_temporal_loss / num_val_batches
+    val_albedo_loss = total_albedo_loss / num_val_batches
+    print("Val loss: {}, EIrradiance Loss: {}, Temporal Loss: {}, Albedo Loss: {}".format(val_loss, val_ei_loss, val_temp_loss, val_albedo_loss))
     scheduler.step(val_loss)
 
 def train(model, optimizer, scheduler, dataloader, state_mgr, num_epochs):
