@@ -2,3 +2,5 @@ __pycache__
 weights
 outputs
 ref_weights
+stats
+vids

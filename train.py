@@ -8,6 +8,7 @@ from arg_handler import parse_train_args
 from modified_model import DenoiserModel, TemporalDenoiserModel
 from modified_vanilla_model import TemporalVanillaDenoiserModel, VanillaDenoiserModel
 from smallmodel import TemporalSmallModel
+from hierarchicalmodel import TemporalHierarchicalKernelModel
 from dataset import PreProcessedDataset
 from state import StateManager
 from loss import Loss
@@ -21,9 +22,9 @@ args = parse_train_args()
 dev = torch.device("cuda:{}".format(args.gpu))
 if args.vanilla_net:
     model = TemporalSmallModel().to(dev)
-    #model = TemporalVanillaDenoiserModel(init=True).to(dev)
 else:
-    model = TemporalDenoiserModel(recurrent=not args.disable_recurrence, init=args.restore is None).to(dev)
+    model = TemporalHierarchicalKernelModel().to(dev)
+
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))#, weight_decay=1e-5)
 state_mgr = StateManager(args, model, optimizer, dev)
 loss_gen = Loss(dev)
