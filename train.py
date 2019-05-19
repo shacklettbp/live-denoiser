@@ -90,9 +90,9 @@ def train_epoch(model, optimizer, scheduler, dataloader):
             ref_e_irradiance = ref / (ref_albedo + 0.001)
             loss, ei_loss, temp_loss, albedo_loss = loss_gen.compute(ref, outputs, ref_e_irradiance,  e_irradiances, ref_albedo, albedo_outs)
             total_val_loss += loss.cpu()
-            total_ei_loss += loss.cpu()
-            total_temporal_loss += loss.cpu()
-            total_albedo_loss += loss.cpu()
+            total_ei_loss += ei_loss.cpu()
+            total_temporal_loss += temp_loss.cpu()
+            total_albedo_loss += albedo_loss.cpu()
     
     val_loss = total_val_loss / num_val_batches
     val_ei_loss = total_ei_loss / num_val_batches

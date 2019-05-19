@@ -50,8 +50,8 @@ class Loss:
 
         temporal_loss = (((output_temporal_gradients - ref_temporal_gradients)**2)/(output_temporal_gradients.detach()**2 + 0.01)).mean()
 
-        #albedo_loss = (((albedos - ref_albedos)**2)/(albedos.detach()**2 + 0.01)).mean()
-        albedo_loss = ((albedos - ref_albedos)**2).mean()
+        albedo_loss = (((albedos - ref_albedos)**2)/(albedos.detach()**2 + 0.01)).mean()
+        #albedo_loss = ((albedos - ref_albedos)**2).mean()
         
         loss = irradiance_loss + temporal_loss + albedo_loss
 
