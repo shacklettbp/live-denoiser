@@ -129,10 +129,9 @@ def train(state, color, normal, albedo, alt_color, alt_color2, alt_color3, alt_a
         idxs = list(product(list(chain(range(0, color.shape[-1], state.args.cropsize)[:-1], [color.shape[-1] - state.args.cropsize])), list(chain(range(0, color.shape[-2], state.args.cropsize)[:-1], [color.shape[-2] - state.args.cropsize]))))
 
         if state.args.importance_sample:
-            print("FIXME")
             scored_idxs = [] 
             for x, y in idxs:
-                irradiance_crop = state.prev1[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
+                irradiance_crop = state.prev_irradiance1[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
 
                 x_delta = (irradiance_crop[..., 0:state.args.cropsize - 1] - irradiance_crop[..., 1:state.args.cropsize]).abs().mean()
                 y_delta = (irradiance_crop[..., 0:state.args.cropsize - 1, :] - irradiance_crop[..., 1:state.args.cropsize, :]).abs().mean()
@@ -200,7 +199,7 @@ def train(state, color, normal, albedo, alt_color, alt_color2, alt_color3, alt_a
             total_loss += loss
             loss.backward()
             state.optimizer.step()
-            state.scheduler.batch_step()
+            #state.scheduler.batch_step()
 
     #state.scheduler.step()
     print(float(loss.cpu()) / state.args.outer_train_iters)
@@ -245,8 +244,8 @@ def init_training_state(dev=torch.device('cuda:{}'.format(0)), init_weights=None
             return 5e-5
 
     #scheduler = LambdaLR(optimizer, lr_lambda=schedule_func)
-    scheduler = CyclicLR(optimizer, args.lr / 10, args.lr, step_size=50)
-    #scheduler = None
+    #scheduler = CyclicLR(optimizer, args.lr / 10, args.lr, step_size=50)
+    scheduler = None
 
     return TrainingState(model, optimizer, scheduler, loss_gen, args)
 
