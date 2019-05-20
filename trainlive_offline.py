@@ -19,13 +19,13 @@ training_state = init_training_state(dev, args.weights)
 dataset = ExrDataset(dataset_path=args.inputs,
                      num_imgs=args.num_imgs)
 
-alt_dataset = ExrDataset(dataset_path="/home/bps/rendering/data-fast/finals/1spp/bistro/inferpath_alt2",
+alt_dataset = ExrDataset(dataset_path=args.inputs + "2",
                          num_imgs=args.num_imgs)
 
-alt_dataset2 = ExrDataset(dataset_path="/home/bps/rendering/data-fast/finals/1spp/bistro/inferpath_alt3",
+alt_dataset2 = ExrDataset(dataset_path=args.inputs + "3",
                          num_imgs=args.num_imgs)
 
-alt_dataset3 = ExrDataset(dataset_path="/home/bps/rendering/data-fast/finals/1spp/bistro/inferpath_alt4",
+alt_dataset3 = ExrDataset(dataset_path=args.inputs + "4",
                          num_imgs=args.num_imgs)
 
 for i in range(args.start_frame, min(len(dataset), len(alt_dataset))):
@@ -41,7 +41,7 @@ for i in range(args.start_frame, min(len(dataset), len(alt_dataset))):
     alt_color2, alt_albedo2 = alt_color2.to(dev), alt_albedo2.to(dev)
     alt_color2, alt_albedo2 = alt_color2.unsqueeze(dim=0), alt_albedo2.unsqueeze(dim=0)
 
-    alt_color3, _, alt_albedo3 = alt_dataset2[i]
+    alt_color3, _, alt_albedo3 = alt_dataset3[i]
     alt_color3, alt_albedo3 = alt_color3.to(dev), alt_albedo3.to(dev)
     alt_color3, alt_albedo3 = alt_color3.unsqueeze(dim=0), alt_albedo3.unsqueeze(dim=0)
 

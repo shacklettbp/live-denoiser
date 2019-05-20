@@ -193,7 +193,7 @@ class HierarchicalKernelModel(nn.Module):
         mapped_albedo = torch.log1p(albedo)
         mapped_prev = torch.log1p(prev1)
 
-        irradiance_depth = 3
+        irradiance_depth = 4
 
         color_pyramid = self.make_pyramid(mapped_color, depth=irradiance_depth)
         normal_pyramid = self.make_pyramid(normal, depth=irradiance_depth, preblur=False)

@@ -13,6 +13,7 @@ import random
 from itertools import chain, product
 from filters import simple_filter, bilateral_filter
 from smallmodel import SmallModel, KernelModel
+from hierarchicalmodel import HierarchicalKernelModel
 import sys
 import itertools
 from data_loading import save_exr # debugging purposes
@@ -195,11 +196,11 @@ def train(state, color, normal, albedo, alt_color, alt_color2, alt_color3, alt_a
             temporal_ref = torch.stack([prev_ref2_train, prev_ref1_train, ref_color_train], dim=1)
             temporal_out = torch.stack([prev2_train, prev1_train, output], dim=1)
 
-            loss, _ = state.loss_gen.compute(temporal_ref, temporal_out, ref_irradiance_train, e_irradiance, ref_albedo_train, output_albedos)
+            loss, _, _, _ = state.loss_gen.compute(temporal_ref, temporal_out, ref_irradiance_train, e_irradiance, ref_albedo_train, output_albedos)
             total_loss += loss
             loss.backward()
             state.optimizer.step()
-            #state.scheduler.batch_step()
+            state.scheduler.batch_step()
 
     #state.scheduler.step()
     print(float(loss.cpu()) / state.args.outer_train_iters)
@@ -219,7 +220,7 @@ def create_model(args, dev, weights):
 
 def init_training_state(dev=torch.device('cuda:{}'.format(0)), init_weights=None):
     #args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=32, cropsize=64, augment=False, importance_sample=False)
-    args = Args(lr=0.000003, outer_train_iters=32, inner_train_iters=1, num_crops=8, cropsize=128, augment=False, importance_sample=False)
+    args = Args(lr=0.0003, outer_train_iters=128, inner_train_iters=1, num_crops=8, cropsize=128, augment=False, importance_sample=False)
     model = create_model(args, dev, init_weights)
     #for name, param in model.named_parameters():
     #    if not name.startswith("model.kernel"):
@@ -244,8 +245,8 @@ def init_training_state(dev=torch.device('cuda:{}'.format(0)), init_weights=None
             return 5e-5
 
     #scheduler = LambdaLR(optimizer, lr_lambda=schedule_func)
-    #scheduler = CyclicLR(optimizer, args.lr / 10, args.lr, step_size=50)
-    scheduler = None
+    scheduler = CyclicLR(optimizer, args.lr / 10, args.lr, step_size=50)
+    #scheduler = None
 
     return TrainingState(model, optimizer, scheduler, loss_gen, args)
 
