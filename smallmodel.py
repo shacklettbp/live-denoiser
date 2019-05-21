@@ -205,24 +205,18 @@ class KernelModelImpl(nn.Module):
                 nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
-        self.final = nn.Sequential(
-                nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-                nn.ReLU(),
-                nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
-                nn.ReLU())
-
         self.kernel5 = nn.Sequential(
-                nn.Conv2d(in_channels=32, out_channels=32, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=96, out_channels=32, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=32, out_channels=self.kernel_total_weights, kernel_size=3, stride=1, padding=1))
 
         self.kernel4 = nn.Sequential(
-                nn.Conv2d(in_channels=32+3, out_channels=32, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=64+3, out_channels=32, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=32, out_channels=self.kernel_total_weights, kernel_size=3, stride=1, padding=1))
 
         self.kernel3 = nn.Sequential(
-                nn.Conv2d(in_channels=32+3, out_channels=32, kernel_size=3, stride=1, padding=1),
+                nn.Conv2d(in_channels=48+3, out_channels=32, kernel_size=3, stride=1, padding=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=32, out_channels=self.kernel_total_weights, kernel_size=3, stride=1, padding=1))
 
@@ -302,27 +296,25 @@ class KernelModelImpl(nn.Module):
         out = F.avg_pool2d(enc4_out, kernel_size=2, stride=2)
 
         out = self.enc5(out)
-        out = self.dec5(out)
-        out = F.interpolate(out, scale_factor=2, mode='bilinear')
+        dec5_out = self.dec5(out)
+        out = F.interpolate(dec5_out, scale_factor=2, mode='bilinear')
 
         out = torch.cat([out, enc4_out], dim=1)
-        out = self.dec4(out)
-        out = F.interpolate(out, scale_factor=2, mode='bilinear')
+        dec4_out = self.dec4(out)
+        out = F.interpolate(dec4_out, scale_factor=2, mode='bilinear')
 
         out = torch.cat([out, enc3_out], dim=1)
-        out = self.dec3(out)
-        out = F.interpolate(out, scale_factor=2, mode='bilinear')
+        dec3_out = self.dec3(out)
+        out = F.interpolate(dec3_out, scale_factor=2, mode='bilinear')
 
         out = torch.cat([out, enc2_out], dim=1)
-        out = self.dec2(out)
-        out = F.interpolate(out, scale_factor=2, mode='bilinear')
+        dec2_out = self.dec2(out)
+        out = F.interpolate(dec2_out, scale_factor=2, mode='bilinear')
 
         out = torch.cat([out, enc1_out], dim=1)
-        out = self.dec1(out)
+        dec1_out = self.dec1(out)
 
-        out = self.final(out)
-
-        feature_pyramid = self.make_pyramid(out)
+        feature_pyramid = [ dec1_out, dec2_out, dec3_out, dec4_out, dec5_out ]
 
         kernel_weights = self.kernel5(feature_pyramid[4])
         filter_in = torch.stack([color_pyramid[4], prev_pyramid[4], torch.zeros_like(color_pyramid[4])], dim=1)

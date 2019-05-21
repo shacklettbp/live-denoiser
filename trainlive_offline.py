@@ -9,6 +9,7 @@ from utils import tonemap
 from data_loading import pad_data, save_exr, save_png
 from filters import simple_filter
 import os
+import re
 from trainlive import init_training_state, train_and_eval
 
 args = parse_infer_args()
@@ -16,16 +17,18 @@ dev = torch.device('cuda:{}'.format(args.gpu))
 
 training_state = init_training_state(dev, args.weights)
 
-dataset = ExrDataset(dataset_path=args.inputs,
+input_dir_base = os.path.normpath(args.inputs)
+
+dataset = ExrDataset(dataset_path=input_dir_base,
                      num_imgs=args.num_imgs)
 
-alt_dataset = ExrDataset(dataset_path="/home/bps/rendering/data-fast/finals/1spp/bistro/inferpath_alt2",
+alt_dataset = ExrDataset(dataset_path=input_dir_base + "2",
                          num_imgs=args.num_imgs)
 
-alt_dataset2 = ExrDataset(dataset_path="/home/bps/rendering/data-fast/finals/1spp/bistro/inferpath_alt3",
+alt_dataset2 = ExrDataset(dataset_path=input_dir_base + "3",
                          num_imgs=args.num_imgs)
 
-alt_dataset3 = ExrDataset(dataset_path="/home/bps/rendering/data-fast/finals/1spp/bistro/inferpath_alt4",
+alt_dataset3 = ExrDataset(dataset_path=input_dir_base + "4",
                          num_imgs=args.num_imgs)
 
 for i in range(args.start_frame, min(len(dataset), len(alt_dataset))):
@@ -41,7 +44,7 @@ for i in range(args.start_frame, min(len(dataset), len(alt_dataset))):
     alt_color2, alt_albedo2 = alt_color2.to(dev), alt_albedo2.to(dev)
     alt_color2, alt_albedo2 = alt_color2.unsqueeze(dim=0), alt_albedo2.unsqueeze(dim=0)
 
-    alt_color3, _, alt_albedo3 = alt_dataset2[i]
+    alt_color3, _, alt_albedo3 = alt_dataset3[i]
     alt_color3, alt_albedo3 = alt_color3.to(dev), alt_albedo3.to(dev)
     alt_color3, alt_albedo3 = alt_color3.unsqueeze(dim=0), alt_albedo3.unsqueeze(dim=0)
 

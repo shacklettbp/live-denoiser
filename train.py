@@ -8,6 +8,7 @@ from arg_handler import parse_train_args
 from modified_model import DenoiserModel, TemporalDenoiserModel
 from modified_vanilla_model import TemporalVanillaDenoiserModel, VanillaDenoiserModel
 from smallmodel import TemporalSmallModel
+from hierarchicalmodel import TemporalHierarchicalKernelModel
 from dataset import PreProcessedDataset
 from state import StateManager
 from loss import Loss
@@ -21,9 +22,9 @@ args = parse_train_args()
 dev = torch.device("cuda:{}".format(args.gpu))
 if args.vanilla_net:
     model = TemporalSmallModel().to(dev)
-    #model = TemporalVanillaDenoiserModel(init=True).to(dev)
 else:
-    model = TemporalDenoiserModel(recurrent=not args.disable_recurrence, init=args.restore is None).to(dev)
+    model = TemporalHierarchicalKernelModel().to(dev)
+
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))#, weight_decay=1e-5)
 state_mgr = StateManager(args, model, optimizer, dev)
 loss_gen = Loss(dev)
@@ -67,7 +68,7 @@ def train_epoch(model, optimizer, scheduler, dataloader):
         optimizer.zero_grad()
         outputs, e_irradiances, albedo_outs = model(color, normal, albedo)
         ref_e_irradiance = ref / (ref_albedo + 0.001)
-        loss, _ = loss_gen.compute(ref, outputs, ref_e_irradiance, e_irradiances, ref_albedo, albedo_outs)
+        loss, _, _, _ = loss_gen.compute(ref, outputs, ref_e_irradiance, e_irradiances, ref_albedo, albedo_outs)
         loss.backward()
 
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1e-3)
@@ -76,6 +77,9 @@ def train_epoch(model, optimizer, scheduler, dataloader):
 
     model.eval()
     total_val_loss = 0
+    total_ei_loss = 0
+    total_temporal_loss = 0
+    total_albedo_loss = 0
     num_val_batches = 0
     for color, normal, albedo, ref, ref_albedo in iter_with_device(val_dataloader, args.gpu):
         #color, normal, albedo, ref, direct, indirect, tshadow = color.to(dev), normal.to(dev), albedo.to(dev), ref.to(dev), direct.to(dev), indirect.to(dev), tshadow.to(dev)
@@ -85,11 +89,17 @@ def train_epoch(model, optimizer, scheduler, dataloader):
         with torch.no_grad():
             outputs, e_irradiances, albedo_outs = model(color, normal, albedo)
             ref_e_irradiance = ref / (ref_albedo + 0.001)
-            loss, _ = loss_gen.compute(ref, outputs, ref_e_irradiance,  e_irradiances, ref_albedo, albedo_outs)
+            loss, ei_loss, temp_loss, albedo_loss = loss_gen.compute(ref, outputs, ref_e_irradiance,  e_irradiances, ref_albedo, albedo_outs)
             total_val_loss += loss.cpu()
+            total_ei_loss += ei_loss.cpu()
+            total_temporal_loss += temp_loss.cpu()
+            total_albedo_loss += albedo_loss.cpu()
     
     val_loss = total_val_loss / num_val_batches
-    print("Val loss: {}".format(val_loss))
+    val_ei_loss = total_ei_loss / num_val_batches
+    val_temp_loss = total_temporal_loss / num_val_batches
+    val_albedo_loss = total_albedo_loss / num_val_batches
+    print("Val loss: {}, EIrradiance Loss: {}, Temporal Loss: {}, Albedo Loss: {}".format(val_loss, val_ei_loss, val_temp_loss, val_albedo_loss))
     scheduler.step(val_loss)
 
 def train(model, optimizer, scheduler, dataloader, state_mgr, num_epochs):

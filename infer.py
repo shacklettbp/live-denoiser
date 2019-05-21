@@ -6,6 +6,7 @@ from arg_handler import parse_infer_args
 from modified_model import DenoiserModel
 from modified_vanilla_model import VanillaDenoiserModel
 from smallmodel import KernelModel
+from hierarchicalmodel import HierarchicalKernelModel
 from utils import tonemap
 from data_loading import pad_data, save_exr, save_png
 from filters import simple_filter
@@ -14,10 +15,9 @@ import os
 args = parse_infer_args()
 dev = torch.device('cuda:{}'.format(args.gpu))
 if args.vanilla_net:
-    #model = VanillaDenoiserModel().to(dev)
     model = KernelModel().to(dev)
 else:
-    model = DenoiserModelWrapper(recurrent=not args.disable_recurrence, init=False).to(dev)
+    model = HierarchicalKernelModel().to(dev)
 
 state_dict = torch.load(args.weights, map_location='cpu')
 state_dict = { '.'.join(k.split('.')[1:]): v for k, v in state_dict.items() }
