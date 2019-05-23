@@ -11,25 +11,26 @@ from filters import simple_filter
 import os
 import re
 from trainlive import init_training_state, train_and_eval
+from glob import glob
 
-args = parse_infer_args()
+args = parse_infer_args(True)
 dev = torch.device('cuda:{}'.format(args.gpu))
 
 training_state = init_training_state(dev, args.weights)
 
-input_dir_base = os.path.normpath(args.inputs)
+# input_dir_base = os.path.normpath(args.inputs)
 
-dataset = ExrDataset(dataset_path=input_dir_base,
-                     num_imgs=args.num_imgs)
+input_paths = []
+for f in args.inputs:
+    if '*' in f:
+        input_paths = input_paths + glob(f)
+    else:
+        input_paths.append(f)
 
-alt_dataset = ExrDataset(dataset_path=input_dir_base + "2",
-                         num_imgs=args.num_imgs)
-
-alt_dataset2 = ExrDataset(dataset_path=input_dir_base + "3",
-                         num_imgs=args.num_imgs)
-
-alt_dataset3 = ExrDataset(dataset_path=input_dir_base + "4",
-                         num_imgs=args.num_imgs)
+dataset      = ExrDataset(dataset_path=input_paths[0], num_imgs=args.num_imgs)
+alt_dataset  = ExrDataset(dataset_path=input_paths[1], num_imgs=args.num_imgs)
+alt_dataset2 = ExrDataset(dataset_path=input_paths[2], num_imgs=args.num_imgs)
+alt_dataset3 = ExrDataset(dataset_path=input_paths[3], num_imgs=args.num_imgs)
 
 for i in range(args.start_frame, min(len(dataset), len(alt_dataset))):
     color, normal, albedo = dataset[i]

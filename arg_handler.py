@@ -23,12 +23,15 @@ def parse_train_args():
 
     return parser.parse_args()
 
-def parse_infer_args():
+def parse_infer_args(multi_inputs = False):
     parser = argparse.ArgumentParser()
     common_args(parser)
 
     parser.add_argument('--weights', type=str, required=False)
-    parser.add_argument('--inputs', type=str, required=True)
+    if multi_inputs:
+        parser.add_argument('--inputs', type=str, nargs="+", required=True)        
+    else:
+        parser.add_argument('--inputs', type=str, required=True)
     parser.add_argument('--outputs', type=str, default='outputs')
     parser.add_argument('--num-imgs', type=int, default=None)
     parser.add_argument('--start-frame', type=int, default=0)
