@@ -28,6 +28,86 @@ class ResBlock(nn.Module):
 
         return out
 
+class UnderlyingModel(nn.Module):
+    def __init__(self):
+        super(UnderlyingModel, self).__init__()
+
+        self.enc1 = nn.Sequential(
+                nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
+                nn.ReLU())
+
+        self.enc2 = nn.Sequential(
+                nn.Conv2d(in_channels=64, out_channels=96, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=96, out_channels=96, kernel_size=3, stride=1, padding=1),
+                nn.ReLU())
+
+        self.enc3 = nn.Sequential(
+                nn.Conv2d(in_channels=96, out_channels=128, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1),
+                nn.ReLU())
+
+        self.enc4 = nn.Sequential(
+                nn.Conv2d(in_channels=128, out_channels=160, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=160, out_channels=160, kernel_size=3, stride=1, padding=1),
+                nn.ReLU())
+
+        self.dec4 = nn.Sequential(
+                nn.Conv2d(in_channels=160, out_channels=160, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=160, out_channels=128, kernel_size=3, stride=1, padding=1),
+                nn.ReLU())
+
+        self.dec3 = nn.Sequential(
+                nn.Conv2d(in_channels=128+128, out_channels=128, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=128, out_channels=96, kernel_size=3, stride=1, padding=1),
+                nn.ReLU())
+
+        self.dec2 = nn.Sequential(
+                nn.Conv2d(in_channels=96+96, out_channels=96, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=96, out_channels=64, kernel_size=3, stride=1, padding=1),
+                nn.ReLU())
+
+        self.dec1 = nn.Sequential(
+                nn.Conv2d(in_channels=64+64, out_channels=64, kernel_size=3, stride=1, padding=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
+                nn.ReLU())
+
+    def forward(self, features):
+        enc1_out = self.enc1(features)
+        out = F.avg_pool2d(enc1_out, kernel_size=2, stride=2)
+
+        enc2_out = self.enc2(out)
+        out = F.avg_pool2d(enc2_out, kernel_size=2, stride=2)
+
+        enc3_out = self.enc3(out)
+        out = F.avg_pool2d(enc3_out, kernel_size=2, stride=2)
+
+        enc4_out = self.enc4(out)
+        out = self.dec4(enc4_out)
+
+        out = F.interpolate(out, scale_factor=2, mode='bilinear')
+
+        out = torch.cat([out, enc3_out], dim=1)
+        out = self.dec3(out)
+        out = F.interpolate(out, scale_factor=2, mode='bilinear')
+
+        out = torch.cat([out, enc2_out], dim=1)
+        out = self.dec2(out)
+        out = F.interpolate(out, scale_factor=2, mode='bilinear')
+
+        out = torch.cat([out, enc1_out], dim=1)
+        out = self.dec1(out)
+
+        return out
+
 class HierarchicalModelImpl(nn.Module):
     def __init__(self):
         super(HierarchicalModelImpl, self).__init__()
@@ -41,10 +121,12 @@ class HierarchicalModelImpl(nn.Module):
                 nn.GroupNorm(16, 64),
                 nn.ReLU())
 
-        self.crunch = nn.Sequential(
-            ResBlock(64, 64),
-            ResBlock(64, 64),
-            ResBlock(64, 64))
+        #self.crunch = nn.Sequential(
+        #    ResBlock(64, 64),
+        #    ResBlock(64, 64),
+        #    ResBlock(64, 64))
+
+        self.crunch = UnderlyingModel()
 
         self.flow = nn.Sequential(
                 nn.Conv2d(in_channels=64, out_channels=32, kernel_size=3, stride=1, padding=1),
