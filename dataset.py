@@ -91,6 +91,60 @@ class ExrDataset(torch.utils.data.Dataset):
 
         return [ color, normal, albedo]#, direct, indirect, tshadow ]
 
+class ExrSeparatedDataset(torch.utils.data.Dataset):
+    def get_files(self, dir, num_imgs, num_versions):
+        files = []
+        dir = os.path.expanduser(dir)
+        if num_imgs is None:
+            num_imgs = len(glob(os.path.join(dir, 'hdr_*_0.exr')))
+
+        if num_versions is None:
+            num_versions = len(glob(os.path.join(dir, 'hdr_0_*.exr')))
+
+        for i in range(0, num_imgs):
+            versions = []
+            for j in range(num_versions):
+                versions.append((os.path.join(dir, "hdr_{}_{}.exr".format(i, j)),
+                              os.path.join(dir, "normal_{}_{}.exr".format(i, j)),
+                              os.path.join(dir, "albedo_{}_{}.exr".format(i, j)),
+                              os.path.join(dir, "direct_{}_{}.exr".format(i, j)),
+                              os.path.join(dir, "indirect_{}_{}.exr".format(i, j)),
+                              os.path.join(dir, "shadowt_{}_{}.exr".format(i, j))))
+
+            files.append(versions)
+
+        return files
+
+    def __init__(self, dataset_path, num_imgs=None, num_versions=None):
+        self.files = self.get_files(dataset_path, num_imgs=num_imgs, num_versions=num_versions)
+
+    def __len__(self):
+        return len(self.files)
+
+    def __getitem__(self, idx):
+        colors = []
+        normals = []
+        albedos = []
+        for filenames in self.files[idx]:
+            hdr_filename, normal_filename, albedo_filename, direct_filename, indirect_filename, tshadow_filename = filenames
+
+            color = load_exr(hdr_filename)
+            normal = load_exr(normal_filename)[0:2, ...]
+            albedo = load_exr(albedo_filename)
+            #direct = load_exr(direct_filename)
+            #indirect = load_exr(indirect_filename)
+            #tshadow = load_exr(tshadow_filename)
+
+            colors.append(color)
+            normals.append(normal)
+            albedos.append(albedo)
+
+        color = torch.stack(colors, dim=0)
+        normal = torch.stack(normals, dim=0)
+        albedo = torch.stack(albedos, dim=0)
+
+        return [ color, normal, albedo]
+
 class PreProcessedDataset(torch.utils.data.Dataset):
     def __init__(self, dataset_path, augment=True, num_imgs=None):
         dataset_path = os.path.expanduser(dataset_path)
