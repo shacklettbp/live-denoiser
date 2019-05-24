@@ -13,7 +13,7 @@ import random
 from itertools import chain, product
 from filters import simple_filter, bilateral_filter
 from smallmodel import SmallModel, KernelModel, TemporalSmallModel
-from hierarchicalmodel import HierarchicalKernelModel
+from hierarchicalmodel import HierarchicalKernelModel, TemporalHierarchicalKernelModel
 import sys
 import itertools
 from data_loading import save_exr # debugging purposes

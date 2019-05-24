@@ -118,7 +118,7 @@ class HierarchicalModelImpl(nn.Module):
 
         self.start = nn.Sequential(
                 nn.Conv2d(in_channels=13, out_channels=64, kernel_size=3, stride=1, padding=1),
-                nn.GroupNorm(16, 64),
+                nn.GroupNorm(64//4, 64),
                 nn.ReLU())
 
         #self.crunch = nn.Sequential(
@@ -126,7 +126,9 @@ class HierarchicalModelImpl(nn.Module):
         #    ResBlock(64, 64),
         #    ResBlock(64, 64))
 
-        self.crunch = UnderlyingModel()
+        #self.crunch = UnderlyingModel()
+
+        self.crunch = ResBlock(64, 64)
 
         self.flow = nn.Sequential(
                 nn.Conv2d(in_channels=64, out_channels=32, kernel_size=3, stride=1, padding=1),
@@ -273,25 +275,28 @@ class TemporalHierarchicalKernelModel(nn.Module):
         super(TemporalHierarchicalKernelModel, self).__init__()
         self.model = HierarchicalKernelModel(*args, **kwargs)
 
-    def forward(self, color, normal, albedo):
-        color = color.transpose(0, 1)
-        normal = normal.transpose(0, 1)
-        albedo = albedo.transpose(0, 1)
+    def forward(self, color, normal, albedo, prev_irradiance=None, prev2_irradiance=None):
+        if prev_irradiance is None:
+            color = color.transpose(0, 1)
+            normal = normal.transpose(0, 1)
+            albedo = albedo.transpose(0, 1)
 
-        all_outputs = []
-        ei_outputs = []
-        albedo_outputs = []
+            all_outputs = []
+            ei_outputs = []
+            albedo_outputs = []
 
-        prev1 = torch.zeros_like(color[0]);
-        prev2 = torch.zeros_like(prev1);
+            prev1 = torch.zeros_like(color[0]);
+            prev2 = torch.zeros_like(prev1);
 
-        for i in range(color.shape[0]):
-            output, ei, albedo_out = self.model(color[i], normal[i], albedo[i], prev1, prev2)
-            all_outputs.append(output)
-            ei_outputs.append(ei)
-            albedo_outputs.append(albedo_out)
+            for i in range(color.shape[0]):
+                output, ei, albedo_out = self.model(color[i], normal[i], albedo[i], prev1, prev2)
+                all_outputs.append(output)
+                ei_outputs.append(ei)
+                albedo_outputs.append(albedo_out)
 
-            prev2 = prev1
-            prev1 = ei
+                prev2 = prev1
+                prev1 = ei
 
-        return torch.stack(all_outputs, dim=1), torch.stack(ei_outputs, dim=1), torch.stack(albedo_outputs, dim=1)
+            return torch.stack(all_outputs, dim=1), torch.stack(ei_outputs, dim=1), torch.stack(albedo_outputs, dim=1)
+        else:
+            return self.model(color, normal, albedo, prev_irradiance, prev_irradiance2)
