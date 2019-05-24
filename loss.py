@@ -45,8 +45,8 @@ class Loss:
         #loss = noise2noise_loss.mean()# + 1e-4 * lum_loss.mean() + 1e-3 * (d_x.mean() + d_y.mean())
         irradiance_loss = (((e_irradiance - ref_e_irradiance)**2)/(e_irradiance.detach()**2 + 0.01)).mean()
 
-        ref_temporal_gradients = refs[:, 0:2, ...] - refs[:, 1:3, ...]
-        output_temporal_gradients = outputs[:, 0:2, ...] - outputs[:, 1:3, ...]
+        ref_temporal_gradients = refs[:, 0:-1, ...] - refs[:, 1:, ...]
+        output_temporal_gradients = outputs[:, 0:-1, ...] - outputs[:, 1:, ...]
 
         temporal_loss = (((output_temporal_gradients - ref_temporal_gradients)**2)/(output_temporal_gradients.detach()**2 + 0.01)).mean()
 
