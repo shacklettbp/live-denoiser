@@ -60,4 +60,7 @@ for i in framerange:
     output = train_and_eval(training_state, color, normal, albedo, alt_color, alt_color2, alt_color3, alt_albedo, alt_albedo2, alt_albedo3, False)
     output = output[0]
 
-    save_exr(output, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
+    outfile = 'out_{}.exr'.format(i)
+
+    print("Saving %s" % outfile)
+    save_exr(output, os.path.join(args.outputs, outfile))
