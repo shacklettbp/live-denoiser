@@ -1,5 +1,6 @@
 import torch
 import torchvision
+from torch.utils.data import DataLoader
 from dataset import ExrDataset, ExrSeparatedDataset
 from state import StateManager
 from arg_handler import parse_infer_args
@@ -10,6 +11,8 @@ from data_loading import pad_data, save_exr, save_png
 from filters import simple_filter
 import os
 import re
+import asyncio
+import concurrent
 from trainlive import init_training_state, train_and_eval
 
 args = parse_infer_args()
@@ -20,14 +23,24 @@ training_state = init_training_state(dev, args.weights)
 input_dir_base = os.path.normpath(args.inputs)
 
 dataset = ExrSeparatedDataset(dataset_path=input_dir_base,
-                              num_imgs=args.num_imgs, num_versions=5)
+                              num_imgs=args.num_imgs, num_versions=16)
 
-for i in range(args.start_frame, len(dataset)):
-    color, normal, albedo = dataset[i]
-    color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
-    color, normal, albedo  = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0)
+dataloader = DataLoader(dataset, batch_size=1, num_workers=4,
+                        shuffle=False,
+                        pin_memory=True)
 
-    output = train_and_eval(training_state, color, normal, albedo, False)
-    output = output[0]
+def save_result(img, fname):
+    save_exr(img, fname)
 
-    save_exr(output, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
+async def main():
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        for i, (color, normal, albedo) in enumerate(dataloader):
+            color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
+        
+            output = train_and_eval(training_state, color, normal, albedo, False)
+            output = output[0]
+        
+            await loop.run_in_executor(pool, save_result, output.cpu(), os.path.join(args.outputs, 'out_{}.exr'.format(i)))
+
+asyncio.run(main())
