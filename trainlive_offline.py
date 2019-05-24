@@ -37,6 +37,9 @@ framerange = range(args.start_frame, min(len(dataset), len(alt_dataset)))
 if args.reverse:
     framerange = reversed(framerange)
 
+if not os.path.isdir(args.outputs):
+    os.makedirs(args.outputs, exist_ok = True)
+
 for i in framerange:
     color, normal, albedo = dataset[i]
     color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
