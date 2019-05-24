@@ -36,5 +36,6 @@ def parse_infer_args(multi_inputs = False):
     parser.add_argument('--num-imgs', type=int, default=None)
     parser.add_argument('--start-frame', type=int, default=0)
     parser.add_argument('--loss-check', type=str, default=None)
+    parser.add_argument('--reverse', action="store_true", default=False)
 
     return parser.parse_args()

@@ -30,10 +30,15 @@ dataset = ExrDataset(dataset_path=args.inputs,
 color_prev1 = torch.zeros_like(pad_data(dataset[0][0].to(dev)).unsqueeze(dim=0))
 color_prev2 = torch.zeros_like(color_prev1)
 
+framerange = range(args.start_frame, len(dataset))
+
+if args.reverse:
+    framerange = reversed(framerange)
+
 if not os.path.isdir(args.outputs):
     os.makedirs(args.outputs, exist_ok = True)
 
-for i in range(args.start_frame, len(dataset)):
+for i in framerange:
     color, normal, albedo = dataset[i]
     color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
     color, normal, albedo = pad_data(color), pad_data(normal), pad_data(albedo)

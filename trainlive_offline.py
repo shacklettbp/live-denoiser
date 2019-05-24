@@ -32,7 +32,12 @@ alt_dataset  = ExrDataset(dataset_path=input_paths[1], num_imgs=args.num_imgs)
 alt_dataset2 = ExrDataset(dataset_path=input_paths[2], num_imgs=args.num_imgs)
 alt_dataset3 = ExrDataset(dataset_path=input_paths[3], num_imgs=args.num_imgs)
 
-for i in range(args.start_frame, min(len(dataset), len(alt_dataset))):
+framerange = range(args.start_frame, min(len(dataset), len(alt_dataset)))
+
+if args.reverse:
+    framerange = reversed(framerange)
+
+for i in framerange:
     color, normal, albedo = dataset[i]
     color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
     color, normal, albedo  = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0)
