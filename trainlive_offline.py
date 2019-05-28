@@ -16,7 +16,7 @@ from glob import glob
 args = parse_infer_args(True)
 dev = torch.device('cuda:{}'.format(args.gpu))
 
-training_state = init_training_state(dev, args.weights)
+training_state = init_training_state(dev, args.loss, args.weights)
 
 # input_dir_base = os.path.normpath(args.inputs)
 

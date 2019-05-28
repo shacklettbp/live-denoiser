@@ -61,8 +61,10 @@ for i in framerange:
         albedo_output = albedo_output[..., 0:args.img_height, 0:args.img_width]
         albedo_output = albedo_output.squeeze(dim=0)
 
-    save_exr(output, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
-    save_exr(albedo_output, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
-    save_exr(e_irradiance, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
+    out_exr = 'out_{}.exr'.format(i)
+    print("Saving %s" % out_exr)
+    save_exr(output, os.path.join(args.outputs, out_exr))
+    # save_exr(albedo_output, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
+    # save_exr(e_irradiance, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
 
     #save_png(output, os.path.join(args.outputs, 'out_{}.png'.format(i)))

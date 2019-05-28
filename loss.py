@@ -3,8 +3,17 @@ import torch.nn.functional as F
 from utils import calc_luminance
 
 class Loss:
-    def __init__(self, dev):
+    def __init__(self, dev, config):
         self.gaussian = torch.tensor([0.035822, 0.05879, 0.086425, 0.113806, 0.13424, 0.141836, 0.13424, 0.113806, 0.086425, 0.05879, 0.035822], device=dev)
+
+        self.config = config
+
+        configs = ["n2r_trad", "n2n_trad", "n2r_spatial_l2", "n2n_spatial_l2"]
+
+        if self.config not in configs:
+            print("Error: loss config '%s' not supported" % self.config)
+
+        print("************ Initialized loss as %s ************" % self.config)
 
     def smooth(self, input):
         padded = F.pad(input, (5, 5, 5, 5), 'replicate')
@@ -43,7 +52,13 @@ class Loss:
         return sgl2
 
     def compute_l2(self, out, ref):
-        return (((out - ref)**2)/(ref.detach()**2 + 0.001)).mean()
+        if self.config.startswith("n2r_"):
+            return (((out - ref)**2)/(ref.detach()**2 + 0.001)).mean() # N2R
+        elif self.config.startswith("n2n_"):
+            return (((out - ref)**2)/(out.detach()**2 + 0.001)).mean() # N2N
+        else:
+            print("Error: Invalid loss configuration (neither n2r nor n2n)")
+            return None
 
     def compute(self, refs, outputs, ref_e_irradiance, e_irradiance, ref_albedos, albedos):
         assert(len(refs.shape) == 5 and len(outputs.shape) == 5) # We need the temporal component
@@ -64,7 +79,12 @@ class Loss:
         albedo_loss     = self.compute_l2(albedos, ref_albedos)
         spatial_l2      = self.compute_l2(outputs, refs)
 
-        loss = irradiance_loss + temporal_loss + albedo_loss
-        # loss = temporal_loss + spatial_l2
+        if self.config.endswith("_trad"):
+            loss = irradiance_loss + temporal_loss + albedo_loss
+        elif self.config.endswith("_spatial_l2"):
+            loss = temporal_loss + spatial_l2
+        else:
+            print("Error: Invalid loss configuration (neither trad nor spatial_l2)")
+            loss = 0.0
 
         return loss, irradiance_loss, temporal_loss, albedo_loss

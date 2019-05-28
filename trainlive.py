@@ -217,7 +217,7 @@ def create_model(args, dev, weights):
 
     return model
 
-def init_training_state(dev=torch.device('cuda:{}'.format(0)), init_weights=None):
+def init_training_state(dev=torch.device('cuda:{}'.format(0)), losstype="", init_weights=None):
     #args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=32, cropsize=64, augment=False, importance_sample=False)
     args = Args(lr=0.0003, outer_train_iters=128, inner_train_iters=1, num_crops=8, cropsize=128, augment=False, importance_sample=False)
     model = create_model(args, dev, init_weights)
@@ -227,7 +227,7 @@ def init_training_state(dev=torch.device('cuda:{}'.format(0)), init_weights=None
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))
     #optimizer = torch.optim.SGD(model.parameters(), lr=args.lr)
-    loss_gen = Loss(dev)
+    loss_gen = Loss(dev, losstype)
 
     def schedule_func(frame_num):
         print(frame_num)

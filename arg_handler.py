@@ -7,6 +7,7 @@ def common_args(parser):
     parser.add_argument('--vanilla-net', default=False, action='store_true')
     parser.add_argument('--disable-recurrence', action='store_true', default=False)
     parser.add_argument('--lr', type=float, default=0.0003)
+    parser.add_argument("--loss", type=str, required=True)
 
 def parse_train_args():
     parser = argparse.ArgumentParser()

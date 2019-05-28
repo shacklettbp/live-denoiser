@@ -27,7 +27,7 @@ else:
 
 optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.99))#, weight_decay=1e-5)
 state_mgr = StateManager(args, model, optimizer, dev)
-loss_gen = Loss(dev)
+loss_gen = Loss(dev, args.loss)
 
 #dataset = NumpyRawDataset((3, args.img_height, args.img_width),
 #                          training_path=args.training_set,
