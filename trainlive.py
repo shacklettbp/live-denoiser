@@ -126,17 +126,25 @@ def train(state, color, normal, albedo, alt_color, alt_color2, alt_color3, alt_a
 
         stack = torch.cat([cur_color, normal, cur_albedo, ref_color, ref_albedo, state.prev1, state.prev2, state.prev_ref1, state.prev_ref2, state.prev_irradiance1, state.prev_irradiance2], dim=1)
 
-        idxs = list(product(list(chain(range(0, color.shape[-1], state.args.cropsize)[:-1], [color.shape[-1] - state.args.cropsize])), list(chain(range(0, color.shape[-2], state.args.cropsize)[:-1], [color.shape[-2] - state.args.cropsize]))))
+        width = cur_color.shape[-1]
+        height = cur_color.shape[-2]
+
+        idxs = list(product(list(chain(range(0, width, state.args.cropsize)[:-1], [width - state.args.cropsize])), list(chain(range(0, height, state.args.cropsize)[:-1], [height - state.args.cropsize]))))
 
         if state.args.importance_sample:
             scored_idxs = [] 
             for x, y in idxs:
-                irradiance_crop = state.prev_irradiance1[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
+                #irradiance_crop = state.prev_irradiance1[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
 
-                x_delta = (irradiance_crop[..., 0:state.args.cropsize - 1] - irradiance_crop[..., 1:state.args.cropsize]).abs().mean()
-                y_delta = (irradiance_crop[..., 0:state.args.cropsize - 1, :] - irradiance_crop[..., 1:state.args.cropsize, :]).abs().mean()
+                #x_delta = (irradiance_crop[..., 0:state.args.cropsize - 1] - irradiance_crop[..., 1:state.args.cropsize]).abs().mean()
+                #y_delta = (irradiance_crop[..., 0:state.args.cropsize - 1, :] - irradiance_crop[..., 1:state.args.cropsize, :]).abs().mean()
+                #score = x_delta + y_delta
 
-                score = x_delta + y_delta
+                cur_crop = cur_color[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
+                ref_crop = ref_color[..., y:y+state.args.cropsize, x:x+state.args.cropsize]
+
+                score = (((cur_crop - ref_crop)**2)/(((cur_crop + ref_crop)/2)**2 + 0.01)).mean()
+
                 scored_idxs.append((score, x, y))
 
             selected_idxs = [(x, y) for s, x, y in sorted(scored_idxs, reverse=True, key=lambda x: x[0])[0:state.args.num_crops*2]]
