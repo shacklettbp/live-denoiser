@@ -1,6 +1,7 @@
 import torch
 import torchvision
-from dataset import ExrDataset
+from torch.utils.data import DataLoader
+from dataset import ExrDataset, ExrSeparatedDataset
 from state import StateManager
 from arg_handler import parse_infer_args
 from modified_model import DenoiserModel
@@ -10,57 +11,36 @@ from data_loading import pad_data, save_exr, save_png
 from filters import simple_filter
 import os
 import re
+import asyncio
+import concurrent
 from trainlive import init_training_state, train_and_eval
-from glob import glob
 
-args = parse_infer_args(True)
+args = parse_infer_args()
 dev = torch.device('cuda:{}'.format(args.gpu))
 
 training_state = init_training_state(dev, args.loss, args.weights)
 
-# input_dir_base = os.path.normpath(args.inputs)
+input_dir_base = os.path.normpath(args.inputs)
 
-input_paths = []
-for f in args.inputs:
-    if '*' in f:
-        input_paths = input_paths + glob(f)
-    else:
-        input_paths.append(f)
+dataset = ExrSeparatedDataset(dataset_path=input_dir_base,
+                              num_imgs=args.num_imgs, num_versions=16)
 
-dataset      = ExrDataset(dataset_path=input_paths[0], num_imgs=args.num_imgs)
-alt_dataset  = ExrDataset(dataset_path=input_paths[1], num_imgs=args.num_imgs)
-alt_dataset2 = ExrDataset(dataset_path=input_paths[2], num_imgs=args.num_imgs)
-alt_dataset3 = ExrDataset(dataset_path=input_paths[3], num_imgs=args.num_imgs)
+dataloader = DataLoader(dataset, batch_size=1, num_workers=4,
+                        shuffle=False,
+                        pin_memory=True)
 
-framerange = range(args.start_frame, min(len(dataset), len(alt_dataset)))
+def save_result(img, fname):
+    save_exr(img, fname)
 
-if args.reverse:
-    framerange = reversed(framerange)
+async def main():
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        for i, (color, normal, albedo) in enumerate(dataloader):
+            color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
+        
+            output = train_and_eval(training_state, color, normal, albedo, False)
+            output = output[0]
+        
+            await loop.run_in_executor(pool, save_result, output.cpu(), os.path.join(args.outputs, 'out_{}.exr'.format(i)))
 
-if not os.path.isdir(args.outputs):
-    os.makedirs(args.outputs, exist_ok = True)
-
-for i in framerange:
-    color, normal, albedo = dataset[i]
-    color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
-    color, normal, albedo  = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0)
-
-    alt_color, _, alt_albedo = alt_dataset[i]
-    alt_color, alt_albedo = alt_color.to(dev), alt_albedo.to(dev)
-    alt_color, alt_albedo = alt_color.unsqueeze(dim=0), alt_albedo.unsqueeze(dim=0)
-
-    alt_color2, _, alt_albedo2 = alt_dataset2[i]
-    alt_color2, alt_albedo2 = alt_color2.to(dev), alt_albedo2.to(dev)
-    alt_color2, alt_albedo2 = alt_color2.unsqueeze(dim=0), alt_albedo2.unsqueeze(dim=0)
-
-    alt_color3, _, alt_albedo3 = alt_dataset3[i]
-    alt_color3, alt_albedo3 = alt_color3.to(dev), alt_albedo3.to(dev)
-    alt_color3, alt_albedo3 = alt_color3.unsqueeze(dim=0), alt_albedo3.unsqueeze(dim=0)
-
-    output = train_and_eval(training_state, color, normal, albedo, alt_color, alt_color2, alt_color3, alt_albedo, alt_albedo2, alt_albedo3, False)
-    output = output[0]
-
-    outfile = 'out_{}.exr'.format(i)
-
-    print("Saving %s" % outfile)
-    save_exr(output, os.path.join(args.outputs, outfile))
+asyncio.run(main())

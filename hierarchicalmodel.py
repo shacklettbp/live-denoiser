@@ -10,18 +10,14 @@ class ResBlock(nn.Module):
         super(ResBlock, self).__init__()
 
         self.conv1 = nn.Conv2d(in_channels=inputs, out_channels=outputs, kernel_size=3, stride=1, padding=1)
-        self.bn1 = nn.GroupNorm(outputs//4, outputs)
         self.conv2 = nn.Conv2d(in_channels=outputs, out_channels=outputs, kernel_size=3, stride=1, padding=1)
-        self.bn2 = nn.GroupNorm(outputs//4, outputs)
 
     def forward(self, x):
 
         out = self.conv1(x)
-        out = self.bn1(out)
         out = F.relu(out)
 
         out = self.conv2(out)
-        out = self.bn2(out)
 
         out += x 
         out = F.relu(out)
@@ -108,6 +104,43 @@ class UnderlyingModel(nn.Module):
 
         return out
 
+class HierarchicalModelEncoder(nn.Module):
+    def __init__(self, depth, num_inputs):
+        super(HierarchicalModelEncoder, self).__init__()
+
+        self.start = nn.Sequential(nn.Conv2d(in_channels=num_inputs, out_channels=32,
+                                   kernel_size=3,
+                                   stride=1,
+                                   padding=1),
+                                   nn.ReLU())
+
+        self.stages = nn.ModuleList()
+        for i in range(depth):
+            stage = nn.Sequential(nn.Conv2d(in_channels=32,
+                                    out_channels=32,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1),
+                          nn.ReLU(),
+                          nn.Conv2d(in_channels=32,
+                                    out_channels=32,
+                                    kernel_size=3,
+                                    stride=1,
+                                    padding=1),
+                          nn.ReLU())
+            self.stages.append(stage)
+
+    def forward(self, x):
+        out = self.start(x)
+        pyramid = []
+        for idx, stage in enumerate(self.stages):
+            out = stage(out)
+            pyramid.append(out)
+            if idx < len(self.stages) - 1:
+                out = F.avg_pool2d(out, kernel_size=2, stride=2)
+
+        return pyramid
+
 class HierarchicalModelImpl(nn.Module):
     def __init__(self):
         super(HierarchicalModelImpl, self).__init__()
@@ -117,8 +150,7 @@ class HierarchicalModelImpl(nn.Module):
         self.kernel_total_weights = self.kernel_size*self.kernel_size*self.imgs_to_filter
 
         self.start = nn.Sequential(
-                nn.Conv2d(in_channels=13, out_channels=64, kernel_size=3, stride=1, padding=1),
-                nn.GroupNorm(16, 64),
+                nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
                 nn.ReLU())
 
         #self.crunch = nn.Sequential(
@@ -126,7 +158,9 @@ class HierarchicalModelImpl(nn.Module):
         #    ResBlock(64, 64),
         #    ResBlock(64, 64))
 
-        self.crunch = UnderlyingModel()
+        #self.crunch = UnderlyingModel()
+
+        self.crunch = ResBlock(64, 64)
 
         self.flow = nn.Sequential(
                 nn.Conv2d(in_channels=64, out_channels=32, kernel_size=3, stride=1, padding=1),
@@ -186,24 +220,24 @@ class HierarchicalModelImpl(nn.Module):
 
         return F.grid_sample(img, absolute_flow)
 
-    def forward(self, color, normal, albedo, prev, upsampled, upsampled_albedo, upsampled_flow):
-        prev_wrongwarp = self.warp(prev, upsampled_flow)
+    def forward(self, cur_features, prev_features, cur_ei, upsampled_ei, prev_ei, cur_albedo, upsampled_albedo, upsampled_flow):
+        prev_features_warp = self.warp(prev_features, upsampled_flow)
 
-        full_input = torch.cat([color, normal, albedo, prev_wrongwarp, upsampled_flow], dim=1)
+        full_input = torch.cat([cur_features, prev_features_warp], dim=1)
         start = self.start(full_input)
 
         out = self.crunch(start)
 
         flow = self.flow(out) + upsampled_flow
 
-        prev_rightwarp = self.warp(prev, flow)
+        prev_ei_warp = self.warp(prev_ei, flow)
 
         kernel_weights = self.kernel(out)
-        filter_in = torch.stack([color, prev_rightwarp, upsampled], dim=1)
+        filter_in = torch.stack([cur_ei, prev_ei_warp, upsampled_ei], dim=1)
         filtered = self.kernel_pred(filter_in, kernel_weights)
 
         albedo_kernel_weights = self.albedo_kernel(out)
-        albedo_filter_in = torch.stack([albedo, upsampled_albedo], dim=1)
+        albedo_filter_in = torch.stack([cur_albedo, upsampled_albedo], dim=1)
         albedo_filtered = self.kernel_pred(albedo_filter_in, albedo_kernel_weights, 2)
 
         return filtered, albedo_filtered, flow
@@ -211,7 +245,10 @@ class HierarchicalModelImpl(nn.Module):
 class HierarchicalKernelModel(nn.Module):
     def __init__(self):
         super(HierarchicalKernelModel, self).__init__()
+        self.filter_depth = 4
 
+        self.cur_encoder = HierarchicalModelEncoder(num_inputs=8, depth=self.filter_depth)
+        self.prev_encoder = HierarchicalModelEncoder(num_inputs=3, depth=self.filter_depth)
         self.model = HierarchicalModelImpl()
 
         def init_weights(m):
@@ -244,22 +281,26 @@ class HierarchicalKernelModel(nn.Module):
         mapped_albedo = torch.log1p(albedo)
         mapped_prev = torch.log1p(prev1)
 
-        irradiance_depth = 5
+        ei_features = self.cur_encoder(torch.cat([mapped_color, normal, mapped_albedo], dim=1))
+        prev_ei_features = self.prev_encoder(mapped_prev)
 
-        color_pyramid = self.make_pyramid(mapped_color, depth=irradiance_depth)
-        normal_pyramid = self.make_pyramid(normal, depth=irradiance_depth, preblur=False)
-        albedo_pyramid = self.make_pyramid(mapped_albedo, depth=irradiance_depth)
-        prev_pyramid = self.make_pyramid(mapped_prev, depth=irradiance_depth)
+        color_pyramid = self.make_pyramid(mapped_color, depth=self.filter_depth + 1)
+        albedo_pyramid = self.make_pyramid(mapped_albedo, depth=self.filter_depth + 1)
+        prev_pyramid = self.make_pyramid(mapped_prev, depth=self.filter_depth + 1)
 
-        irradiance_out = color_pyramid[irradiance_depth - 1]
-        albedo_out = albedo_pyramid[irradiance_depth - 1]
+        irradiance_out = color_pyramid[self.filter_depth]
+        albedo_out = albedo_pyramid[self.filter_depth]
         flow_out = torch.zeros_like(albedo_out[:, 0:2, ...])
 
-        for i in reversed(range(irradiance_depth - 1)):
-            cur_color, cur_normal, cur_albedo, cur_prev = color_pyramid[i], normal_pyramid[i], albedo_pyramid[i], prev_pyramid[i]
+        for i in reversed(range(self.filter_depth)):
+            cur_color, cur_albedo, cur_prev = color_pyramid[i], albedo_pyramid[i], prev_pyramid[i]
+            cur_ei_features, cur_prev_ei_features = ei_features[i], prev_ei_features[i]
 
-            irradiance_out, albedo_out, flow_out = self.model(cur_color, cur_normal, cur_albedo, cur_prev,
+            irradiance_out, albedo_out, flow_out = self.model(cur_ei_features, cur_prev_ei_features,
+                                                    cur_color,
                                                     F.interpolate(irradiance_out, scale_factor=2, mode='bilinear'),
+                                                    cur_prev,
+                                                    cur_albedo,
                                                     F.interpolate(albedo_out, scale_factor=2, mode='bilinear'),
                                                     F.interpolate(flow_out, scale_factor=2, mode='bilinear'))
 
@@ -273,25 +314,28 @@ class TemporalHierarchicalKernelModel(nn.Module):
         super(TemporalHierarchicalKernelModel, self).__init__()
         self.model = HierarchicalKernelModel(*args, **kwargs)
 
-    def forward(self, color, normal, albedo):
-        color = color.transpose(0, 1)
-        normal = normal.transpose(0, 1)
-        albedo = albedo.transpose(0, 1)
+    def forward(self, color, normal, albedo, prev_irradiance=None, prev2_irradiance=None):
+        if prev_irradiance is None:
+            color = color.transpose(0, 1)
+            normal = normal.transpose(0, 1)
+            albedo = albedo.transpose(0, 1)
 
-        all_outputs = []
-        ei_outputs = []
-        albedo_outputs = []
+            all_outputs = []
+            ei_outputs = []
+            albedo_outputs = []
 
-        prev1 = torch.zeros_like(color[0]);
-        prev2 = torch.zeros_like(prev1);
+            prev1 = torch.zeros_like(color[0]);
+            prev2 = torch.zeros_like(prev1);
 
-        for i in range(color.shape[0]):
-            output, ei, albedo_out = self.model(color[i], normal[i], albedo[i], prev1, prev2)
-            all_outputs.append(output)
-            ei_outputs.append(ei)
-            albedo_outputs.append(albedo_out)
+            for i in range(color.shape[0]):
+                output, ei, albedo_out = self.model(color[i], normal[i], albedo[i], prev1, prev2)
+                all_outputs.append(output)
+                ei_outputs.append(ei)
+                albedo_outputs.append(albedo_out)
 
-            prev2 = prev1
-            prev1 = ei
+                prev2 = prev1
+                prev1 = ei
 
-        return torch.stack(all_outputs, dim=1), torch.stack(ei_outputs, dim=1), torch.stack(albedo_outputs, dim=1)
+            return torch.stack(all_outputs, dim=1), torch.stack(ei_outputs, dim=1), torch.stack(albedo_outputs, dim=1)
+        else:
+            return self.model(color, normal, albedo, prev_irradiance, prev_irradiance2)

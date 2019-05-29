@@ -1,5 +1,6 @@
 import torch
 import torchvision
+from torch.utils.data import DataLoader
 from dataset import ExrDataset
 from state import StateManager
 from arg_handler import parse_infer_args
@@ -11,6 +12,8 @@ from utils import tonemap
 from data_loading import pad_data, save_exr, save_png
 from filters import simple_filter
 import os
+import asyncio
+import concurrent
 
 args = parse_infer_args()
 dev = torch.device('cuda:{}'.format(args.gpu))
@@ -27,44 +30,42 @@ model.eval()
 dataset = ExrDataset(dataset_path=args.inputs,
                      num_imgs=args.num_imgs)
 
-color_prev1 = torch.zeros_like(pad_data(dataset[0][0].to(dev)).unsqueeze(dim=0))
-color_prev2 = torch.zeros_like(color_prev1)
+dataloader = DataLoader(dataset, batch_size=1, num_workers=4,
+                        shuffle=False,
+                        pin_memory=True)
 
-framerange = range(args.start_frame, len(dataset))
+def save_results(out, albedo, ei, i):
+    save_exr(out, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
+    save_exr(albedo, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
+    save_exr(ei, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
 
-if args.reverse:
-    framerange = reversed(framerange)
+async def main():
+    color_prev1 = torch.zeros_like(pad_data(dataset[0][0].to(dev)).unsqueeze(dim=0))
+    color_prev2 = torch.zeros_like(color_prev1)
 
-if not os.path.isdir(args.outputs):
-    os.makedirs(args.outputs, exist_ok = True)
+    loop = asyncio.get_running_loop()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        for idx, (color, normal, albedo) in enumerate(dataloader):
+            color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
+            color, normal, albedo = pad_data(color), pad_data(normal), pad_data(albedo)
+        
+            with torch.no_grad():
+                output, e_irradiance, albedo_output = model(color, normal, albedo, color_prev1, color_prev2)
+        
+                color_prev2 = color_prev1
+                if args.disable_recurrence:
+                    color_prev1 = color
+                else:
+                    color_prev1 = e_irradiance
+        
+                output = output[..., 0:args.img_height, 0:args.img_width]
+                e_irradiance = e_irradiance[..., 0:args.img_height, 0:args.img_width]
+                output = output.squeeze(dim=0)
+                e_irradiance = e_irradiance.squeeze(dim=0)
+        
+                albedo_output = albedo_output[..., 0:args.img_height, 0:args.img_width]
+                albedo_output = albedo_output.squeeze(dim=0)
+        
+            await loop.run_in_executor(pool, save_results, output.cpu(), albedo_output.cpu(), e_irradiance.cpu(), idx)
 
-for i in framerange:
-    color, normal, albedo = dataset[i]
-    color, normal, albedo = color.to(dev), normal.to(dev), albedo.to(dev)
-    color, normal, albedo = pad_data(color), pad_data(normal), pad_data(albedo)
-    color, normal, albedo = color.unsqueeze(dim=0), normal.unsqueeze(dim=0), albedo.unsqueeze(dim=0)
-
-    with torch.no_grad():
-        output, e_irradiance, albedo_output = model(color, normal, albedo, color_prev1, color_prev2)
-
-        color_prev2 = color_prev1
-        if args.disable_recurrence:
-            color_prev1 = color
-        else:
-            color_prev1 = e_irradiance
-
-        output = output[..., 0:args.img_height, 0:args.img_width]
-        e_irradiance = e_irradiance[..., 0:args.img_height, 0:args.img_width]
-        output = output.squeeze(dim=0)
-        e_irradiance = e_irradiance.squeeze(dim=0)
-
-        albedo_output = albedo_output[..., 0:args.img_height, 0:args.img_width]
-        albedo_output = albedo_output.squeeze(dim=0)
-
-    out_exr = 'out_{}.exr'.format(i)
-    print("Saving %s" % out_exr)
-    save_exr(output, os.path.join(args.outputs, out_exr))
-    # save_exr(albedo_output, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
-    # save_exr(e_irradiance, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
-
-    #save_png(output, os.path.join(args.outputs, 'out_{}.png'.format(i)))
+asyncio.run(main())
