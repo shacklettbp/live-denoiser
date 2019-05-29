@@ -29,6 +29,9 @@ dataloader = DataLoader(dataset, batch_size=1, num_workers=4,
                         shuffle=False,
                         pin_memory=True)
 
+if not os.path.isdir(args.outputs):
+    os.makedirs(args.outputs, exist_ok = True)
+
 def save_result(img, fname):
     save_exr(img, fname)
 
