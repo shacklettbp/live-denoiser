@@ -46,7 +46,8 @@ def parse_live_infer_args():
     common_args(parser)
     common_infer_args(parser)
 
-    parser.add_argument('--frames_per_train', type=int, required = True, default=None)
-    parser.add_argument('--refsamples_per_train',     type=int, required = True, default=None)
+    parser.add_argument('--frames_per_train',      type=int, required = True, default=None)
+    parser.add_argument('--refsamples_per_train',  type=int, required = True, default=None)
+    parser.add_argument('--iters_per_train',       type=int, required = True, default=None)
 
     return parser.parse_args()

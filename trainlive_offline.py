@@ -18,7 +18,7 @@ from trainlive import init_training_state, train_and_eval
 args = parse_live_infer_args()
 dev = torch.device('cuda:{}'.format(args.gpu))
 
-training_state = init_training_state(dev, args.loss, args.frames_per_train, args.refsamples_per_train, args.weights)
+training_state = init_training_state(dev, args.loss, args.frames_per_train, args.refsamples_per_train, args.iters_per_train, args.weights)
 
 input_dir_base = os.path.normpath(args.inputs)
 

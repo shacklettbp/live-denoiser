@@ -134,6 +134,9 @@ def train(state, color, normal, albedo):
 
     random.shuffle(state.combos)
 
+    print("Training once every %d frames, with %d ref samples, %d iters.. " % (state.frames_per_train, state.refsamples_per_train, state.args.outer_train_iters), end='')
+    sys.stdout.flush()
+    
     for i in range(state.args.outer_train_iters):
 
         input_idxs, ref_idxs = state.combos[i % len(state.combos)]
@@ -226,7 +229,7 @@ def train(state, color, normal, albedo):
             #state.scheduler.batch_step()
 
     #state.scheduler.step()
-    print(float(loss.cpu()))
+    print("loss: %f" % float(loss.cpu()))
 
 def create_model(args, dev, weights):
     model = TemporalSmallModel().to(dev)
@@ -241,9 +244,9 @@ def create_model(args, dev, weights):
 
     return model
 
-def init_training_state(dev=torch.device('cuda:{}'.format(0)), losstype="", frames_per_train=4, refsamples_per_train=12, init_weights=None):
+def init_training_state(dev=torch.device('cuda:{}'.format(0)), losstype="", frames_per_train=4, refsamples_per_train=12, iters_per_train=120, init_weights=None):
     #args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=32, cropsize=64, augment=False, importance_sample=False)
-    args = Args(lr=0.0003, outer_train_iters=128, inner_train_iters=1, num_crops=8, cropsize=128, augment=False, importance_sample=False)
+    args = Args(lr=0.0003, outer_train_iters=iters_per_train, inner_train_iters=1, num_crops=8, cropsize=128, augment=False, importance_sample=False)
     model = create_model(args, dev, init_weights)
     #for name, param in model.named_parameters():
     #    if not name.startswith("model.model.kernel") and not name.startswith("model.model.albedo_kernel"):
