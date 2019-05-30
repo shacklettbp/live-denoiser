@@ -28,7 +28,7 @@ plt.ylabel("SSIM")
 # plt.xlabel("Frame #")
 # plt.ylabel("MS-SSIM")
 
-for fname in glob.iglob(os.path.join(dir, "*_ssim.log")):
+for fname in sorted(glob.iglob(os.path.join(dir, "*_ssim.log"))):
     with open(fname) as f:
 
         frames = []
@@ -53,7 +53,7 @@ for fname in glob.iglob(os.path.join(dir, "*_ssim.log")):
         plt.figure(0)
         # plt.plot(range(num_frames), psnr, label=name)
         # plt.figure(1)
-        plt.plot(frames, ssims, label=fname)
+        plt.plot(frames, ssims, linewidth=1.0, label=fname)
         # plt.figure(2)
         # plt.plot(range(num_frames), ms_ssim, label=name)
 
@@ -70,5 +70,6 @@ ssim_ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 # ms_ssim_ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
 # psnr_graph.savefig("stats/psnr.png", bbox_inches='tight')
+ssim_graph.savefig("stats/ssim.pdf", bbox_inches='tight')
 ssim_graph.savefig("stats/ssim.png", bbox_inches='tight')
 # ms_ssim_graph.savefig("stats/ms_ssim.png", bbox_inches='tight')

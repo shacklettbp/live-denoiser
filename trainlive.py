@@ -18,6 +18,7 @@ import sys
 import itertools
 from data_loading import save_exr # debugging purposes
 
+
 def prefilter_color(color, albedo):
     color = color / (albedo + 0.001)
     return simple_filter(color, factor=64)
@@ -96,12 +97,14 @@ class Args:
         self.__dict__.update(kwargs)
 
 class TrainingState:
-    def __init__(self, model, optimizer, scheduler, loss_gen, args):
+    def __init__(self, model, optimizer, scheduler, loss_gen, frames_per_train, refsamples_per_train, args):
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.loss_gen = loss_gen
         self.frame_num = 0
+        self.frames_per_train = frames_per_train
+        self.refsamples_per_train = refsamples_per_train
         self.prev_crops = ()
         self.prev_irradiance1 = None
         self.prev_irradiance2 = None
@@ -115,20 +118,33 @@ class TrainingState:
         self.prev2_albedo = None
         self.args = args
 
-combos = itertools.combinations(range(16), 4)
-combos = [(c, list(set(range(16)) - set(c))) for c in combos]
-random.shuffle(combos)
+        self.combos = itertools.combinations(range(4 + self.refsamples_per_train), 4)
+        self.combos = [(c, list(set(range(4 + self.refsamples_per_train)) - set(c))) for c in self.combos]
+        random.shuffle(self.combos)
+
 
 def train(state, color, normal, albedo):
+
     print(state.frame_num)
     state.frame_num += 1
-    if state.frame_num == 1 or (state.frame_num - 1) % 4 != 0:
+    if state.frame_num == 1 or (state.frame_num - 1) % state.frames_per_train != 0:
         return
 
     total_loss = 0
 
+    random.shuffle(state.combos)
+
     for i in range(state.args.outer_train_iters):
-        input_idxs, ref_idxs = combos[i % len(combos)]
+
+        input_idxs, ref_idxs = state.combos[i % len(state.combos)]
+
+        # combo = list(range(16))
+        # random.shuffle(combo)
+
+        # input_idxs = combo[0:4]
+        # ref_idxs = combo[4:(4+state.refsamples_per_train)]
+
+        # print("training with: %s --> %s" % (str(input_idxs), str(ref_idxs)))
 
         cur_color = color[:, input_idxs, ...].mean(dim=1)
         cur_normal = normal[:, input_idxs, ...].mean(dim=1)
@@ -225,7 +241,7 @@ def create_model(args, dev, weights):
 
     return model
 
-def init_training_state(dev=torch.device('cuda:{}'.format(0)), losstype="", init_weights=None):
+def init_training_state(dev=torch.device('cuda:{}'.format(0)), losstype="", frames_per_train=4, refsamples_per_train=12, init_weights=None):
     #args = Args(lr=0.001, outer_train_iters=1, inner_train_iters=1, num_crops=32, cropsize=64, augment=False, importance_sample=False)
     args = Args(lr=0.0003, outer_train_iters=128, inner_train_iters=1, num_crops=8, cropsize=128, augment=False, importance_sample=False)
     model = create_model(args, dev, init_weights)
@@ -255,7 +271,7 @@ def init_training_state(dev=torch.device('cuda:{}'.format(0)), losstype="", init
     #scheduler = CyclicLR(optimizer, args.lr / 10, args.lr, step_size=50)
     scheduler = None
 
-    return TrainingState(model, optimizer, scheduler, loss_gen, args)
+    return TrainingState(model, optimizer, scheduler, loss_gen, frames_per_train, refsamples_per_train, args)
 
 def train_and_eval(training_state, color, normal, albedo, crop=True):
     height, width = color.shape[-2:]
