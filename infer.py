@@ -36,8 +36,8 @@ dataloader = DataLoader(dataset, batch_size=1, num_workers=4,
 
 def save_results(out, albedo, ei, i):
     save_exr(out, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
-    save_exr(albedo, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
-    save_exr(ei, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
+    #save_exr(albedo, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
+    #save_exr(ei, os.path.join(args.outputs, 'ei_{}.exr'.format(i)))
 
 async def main():
     color_prev1 = torch.zeros_like(pad_data(dataset[0][0].to(dev)).unsqueeze(dim=0))
