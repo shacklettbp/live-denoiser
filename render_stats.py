@@ -71,7 +71,7 @@ ssim_ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
 
 plt.figure(2)
 box = ms_ssim_ax.get_position()
-ms_ssim_ax.legend(loc='lower left', bbox_to_anchor=(-0.15, -0.33))
+ms_ssim_ax.legend(loc='upper left', bbox_to_anchor=(-0.15, -0.12))
 
 psnr_graph.savefig(os.path.join(dir, "psnr.png"), bbox_inches='tight', dpi=250)
 ssim_graph.savefig(os.path.join(dir, "ssim.png"), bbox_inches='tight', dpi=250)
