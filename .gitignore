@@ -5,3 +5,6 @@ ref_weights
 stats
 vids
 all_stats
+
+out-4spp-inline-decode*
+out-*/

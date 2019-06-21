@@ -7,6 +7,15 @@ def common_args(parser):
     parser.add_argument('--vanilla-net', default=False, action='store_true')
     parser.add_argument('--disable-recurrence', action='store_true', default=False)
     parser.add_argument('--lr', type=float, default=0.0003)
+    parser.add_argument("--loss", type=str, required=True)
+
+def common_infer_args(parser):
+    parser.add_argument('--weights', type=str, required=False)
+    parser.add_argument('--inputs', type=str, required=True)
+    parser.add_argument('--outputs', type=str, default='outputs')
+    parser.add_argument('--num-imgs', type=int, default=None)
+    parser.add_argument('--start-frame', type=int, default=0)
+    parser.add_argument('--loss-check', type=str, default=None)
 
 def parse_train_args():
     parser = argparse.ArgumentParser()
@@ -26,12 +35,19 @@ def parse_train_args():
 def parse_infer_args():
     parser = argparse.ArgumentParser()
     common_args(parser)
+    common_infer_args(parser)
 
-    parser.add_argument('--weights', type=str, required=False)
-    parser.add_argument('--inputs', type=str, required=True)
-    parser.add_argument('--outputs', type=str, default='outputs')
-    parser.add_argument('--num-imgs', type=int, default=None)
-    parser.add_argument('--start-frame', type=int, default=0)
-    parser.add_argument('--loss-check', type=str, default=None)
+    return parser.parse_args()
+
+
+
+def parse_live_infer_args():
+    parser = argparse.ArgumentParser()
+    common_args(parser)
+    common_infer_args(parser)
+
+    parser.add_argument('--frames_per_train',      type=int, required = True, default=None)
+    parser.add_argument('--refsamples_per_train',  type=int, required = True, default=None)
+    parser.add_argument('--iters_per_train',       type=int, required = True, default=None)
 
     return parser.parse_args()

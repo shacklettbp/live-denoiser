@@ -34,6 +34,9 @@ class StateManager:
         if args.restore is None:
             timestr = datetime.now().strftime('%H-%M-%S-%m-%d-%Y')
             self.weights_dir = os.path.join('weights', args.name + '-' + timestr)
+            if not os.path.isdir(self.weights_dir):
+                os.makedirs(args.outputs, exist_ok = True)
+
             path = pathlib.Path(self.weights_dir).mkdir(parents=True, exist_ok=True)
 
             self.start_epoch = 0
@@ -45,7 +48,7 @@ class StateManager:
                 except:
                     repo_path = '.'
                 repo = pygit2.Repository(repo_path)
-                print("Commit: {}".format(repo.head.get_object().short_id), file=f)
+                print("Commit: {}".format(repo.head.peel().short_id), file=f)
         else:
             self.weights_dir = args.restore
             weights = glob.iglob(os.path.join(self.weights_dir, '*pth'))

@@ -34,6 +34,9 @@ dataloader = DataLoader(dataset, batch_size=1, num_workers=4,
                         shuffle=False,
                         pin_memory=True)
 
+if not os.path.isdir(args.outputs):
+    os.makedirs(args.outputs, exist_ok = True)
+
 def save_results(out, albedo, ei, i):
     save_exr(out, os.path.join(args.outputs, 'out_{}.exr'.format(i)))
     #save_exr(albedo, os.path.join(args.outputs, 'albedo_out_{}.exr'.format(i)))
